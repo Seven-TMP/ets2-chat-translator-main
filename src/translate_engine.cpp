@@ -92,10 +92,34 @@ bool EndsWithWord(const std::wstring& value, const std::wstring& suffix, std::ws
     return true;
 }
 
+bool IsChatEdgePunctuation(wchar_t ch)
+{
+    return ch == L'!' || ch == L'?' || ch == L'.' || ch == L',' || ch == L';' || ch == L':'
+        || ch == L'\xFF01' || ch == L'\xFF1F' || ch == L'\x3002' || ch == L'\xFF0C'
+        || ch == L'\xFF1B' || ch == L'\xFF1A';
+}
+
+std::wstring TrimChatEdgePunctuation(std::wstring value)
+{
+    value = text::Trim(value);
+    while (!value.empty() && IsChatEdgePunctuation(value.front())) value.erase(value.begin());
+    while (!value.empty() && IsChatEdgePunctuation(value.back())) value.pop_back();
+    return text::Trim(value);
+}
+
+std::wstring TrimTrailingChatPunctuation(std::wstring value)
+{
+    value = text::Trim(value);
+    while (!value.empty() && IsChatEdgePunctuation(value.back())) value.pop_back();
+    return text::Trim(value);
+}
+
 std::wstring ShortPhraseFallback(const std::wstring& input)
 {
     std::wstring lower = text::Trim(LowerAscii(input));
     if (lower.empty()) return L"";
+    std::wstring edgeTrimmed = TrimChatEdgePunctuation(lower);
+    std::wstring trailingTrimmed = TrimTrailingChatPunctuation(lower);
 
     struct Item { const wchar_t* key; const wchar_t* value; };
     static const Item exact[] = {
@@ -120,8 +144,9 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         { L"wait", L"等一下" },
         { L"stop", L"停一下" },
         { L"go", L"走" },
-        { L"rec", L"我在录像" },
-        { L"recording", L"我在录像" },
+        { L"rec ban", L"已录屏，等封禁" },
+        { L"rec", L"已录屏" },
+        { L"recording", L"已录屏" },
         { L"hi", L"你好" },
         { L"hi!", L"你好" },
         { L"hello", L"你好" },
@@ -143,6 +168,7 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         { L"lol", L"哈哈" },
         { L"lmao", L"哈哈" },
         { L"xd", L"哈哈" },
+        { L"wtf", L"什么鬼" },
         { L":)", L"微笑" },
         { L":(", L"难过" },
         { L":d", L"哈哈" },
@@ -158,24 +184,24 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         { L"n", L"不" }
     };
 
-    if (lower == L"sry pls" || lower == L"sorry pls" || lower == L"sry please" || lower == L"sorry please") {
+    if (edgeTrimmed == L"sry pls" || edgeTrimmed == L"sorry pls" || edgeTrimmed == L"sry please" || edgeTrimmed == L"sorry please") {
         return L"抱歉，请";
     }
 
     for (const auto& item : exact) {
-        if (lower == item.key) return item.value;
+        if (lower == item.key || edgeTrimmed == item.key) return item.value;
     }
 
     std::wstring prefix;
-    if (EndsWithWord(lower, L"sry pls", prefix) || EndsWithWord(lower, L"sorry pls", prefix)
-        || EndsWithWord(lower, L"sry please", prefix) || EndsWithWord(lower, L"sorry please", prefix)) {
+    if (EndsWithWord(trailingTrimmed, L"sry pls", prefix) || EndsWithWord(trailingTrimmed, L"sorry pls", prefix)
+        || EndsWithWord(trailingTrimmed, L"sry please", prefix) || EndsWithWord(trailingTrimmed, L"sorry please", prefix)) {
         size_t keep = input.size() - (lower.size() - prefix.size());
         return text::Trim(input.substr(0, keep)) + L" 抱歉，请";
     }
 
     for (const auto& item : exact) {
-        if (EndsWithWord(lower, item.key, prefix)) {
-            size_t keep = input.size() - wcslen(item.key);
+        if (EndsWithWord(trailingTrimmed, item.key, prefix)) {
+            size_t keep = input.size() - (lower.size() - prefix.size());
             return text::Trim(input.substr(0, keep)) + L" " + item.value;
         }
     }
@@ -499,7 +525,7 @@ public:
             L"Source can be ANY language (English, Turkish, Russian, German, French, Polish, Spanish, etc.) — translate all of them. "
             L"Translate slang and chat shorthand: sry/sorry=抱歉, pls/plz/please=请, ty/thx/thanks=谢谢, "
             L"np=没事, gg=打得好, wp=打得好, brb=马上回, afk=暂离, lol/xd=哈哈, idk=我不知道, "
-            L"o/ or o//=挥手(打招呼), \\o/=欢呼, hi/hello/hey=你好, bye/cya=再见, gn=晚安, gm=早安, rec=我在录像. "
+            L"o/ or o//=挥手(打招呼), \\o/=欢呼, hi/hello/hey=你好, bye/cya=再见, gn=晚安, gm=早安, rec/recording=已录屏, wtf=什么鬼. "
             L"Keep player names, game IDs (numbers), tags in [brackets], URLs and emoji unchanged. "
             L"If input is purely punctuation/emoji with no meaning, output a brief Chinese description like 表情. "
             L"Never echo the original text as the answer.";
@@ -567,6 +593,7 @@ public:
         std::wstring prompt = L"You translate TruckersMP/ETS2 multiplayer chat into " + target +
             L". Output ONLY the translation, no quotes, no explanations, no original text. "
             L"Always produce target-language output even for very short, slang-heavy, or multilingual inputs. "
+            L"Translate common TruckersMP shorthand: rec/recording=已录屏, rec ban=已录屏，等封禁, wtf=什么鬼. "
             L"Keep player names, game IDs, tags in [brackets], URLs and emoji unchanged. "
             L"Never echo the original text as the answer.";
 
