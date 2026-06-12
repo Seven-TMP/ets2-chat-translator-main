@@ -134,6 +134,95 @@ std::wstring TrimTrailingChatPunctuation(std::wstring value)
     return text::Trim(value);
 }
 
+bool IsAsciiTokenChar(wchar_t ch)
+{
+    return (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') || (ch >= L'0' && ch <= L'9');
+}
+
+bool ProviderLeftoverToken(const std::wstring& token, std::wstring& translated, bool& pauseAfter)
+{
+    std::wstring key = TrimChatEdgePunctuation(NormalizeChatForDictionary(token));
+    pauseAfter = false;
+
+    struct Item { const wchar_t* key; const wchar_t* value; bool pauseAfter; };
+    static const Item items[] = {
+        { L"wtf", L"什么鬼", true },
+        { L"omg", L"天啊", true },
+        { L"ffs", L"真服了", true },
+        { L"lol", L"哈哈", true },
+        { L"lmao", L"哈哈", true },
+        { L"xd", L"哈哈", true },
+        { L"sry", L"抱歉", true },
+        { L"sr", L"抱歉", true },
+        { L"sorry", L"抱歉", true },
+        { L"pls", L"请", false },
+        { L"plz", L"请", false },
+        { L"ty", L"谢谢", true },
+        { L"thx", L"谢谢", true },
+        { L"brb", L"马上回", true },
+        { L"afk", L"暂离", true },
+        { L"idk", L"我不知道", true },
+        { L"idc", L"无所谓", true },
+        { L"gg", L"打得好", true },
+        { L"wp", L"打得好", true },
+        { L"fk", L"靠", true },
+        { L"fck", L"靠", true },
+        { L"fuck", L"操", true },
+        { L"shit", L"靠", true },
+        { L"damn", L"该死", true },
+        { L"idiot", L"白痴", false },
+        { L"stupid", L"蠢货", false },
+        { L"noob", L"菜鸟", false }
+    };
+
+    for (const auto& item : items) {
+        if (key == item.key) {
+            translated = item.value;
+            pauseAfter = item.pauseAfter;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool NeedsPauseAfterToken(wchar_t next)
+{
+    if (next == 0 || iswspace(next)) return false;
+    if (IsChatEdgePunctuation(next) || next == L'\xFF0C' || next == L'\x3001' || next == L'\x3002') return false;
+    return true;
+}
+
+std::wstring FixProviderLeftoverShorthand(const std::wstring& value)
+{
+    if (value.empty()) return value;
+
+    std::wstring out;
+    out.reserve(value.size() + 8);
+    bool changed = false;
+
+    for (size_t i = 0; i < value.size();) {
+        if (!IsAsciiTokenChar(value[i])) {
+            out.push_back(value[i++]);
+            continue;
+        }
+
+        size_t start = i;
+        while (i < value.size() && IsAsciiTokenChar(value[i])) ++i;
+        std::wstring token = value.substr(start, i - start);
+        std::wstring translated;
+        bool pauseAfter = false;
+        if (ProviderLeftoverToken(token, translated, pauseAfter)) {
+            out += translated;
+            if (pauseAfter && i < value.size() && NeedsPauseAfterToken(value[i])) out += L"，";
+            changed = true;
+        } else {
+            out += token;
+        }
+    }
+
+    return changed ? text::Trim(out) : value;
+}
+
 std::wstring ShortPhraseFallback(const std::wstring& input)
 {
     std::wstring lower = NormalizeChatForDictionary(input);
@@ -1740,6 +1829,14 @@ std::wstring TranslateEngine::RunProviders(const std::wstring& value, HttpAgent&
             L" ms=" + std::to_wstring(elapsed) +
             L" attempts=" + std::to_wstring(attemptCount) +
             (error.empty() ? L"" : L" err=" + error));
+
+        if (!out.empty()) {
+            std::wstring fixed = FixProviderLeftoverShorthand(out);
+            if (fixed != out) {
+                LogLine(L"[Translate] \"" + value + L"\" shorthand fix: " + out + L" -> " + fixed);
+                out = std::move(fixed);
+            }
+        }
 
         if (!LooksUntranslated(value, out, runtime_)) {
             NoteProviderResult(i, true, L"");
