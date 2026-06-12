@@ -17,6 +17,7 @@ public:
     bool Open(HINSTANCE instance, const RuntimeConfig& runtime);
     void Close();
     void MessageLoop();
+    void ApplyRuntime(const RuntimeConfig& runtime);
 
     unsigned int Push(ChatEntry entry);
     void PatchTranslation(unsigned int id, const std::wstring& text);

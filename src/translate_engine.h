@@ -4,6 +4,7 @@
 #include "http_agent.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -23,6 +24,7 @@ public:
 
     virtual bool Ready() const = 0;
     virtual std::wstring Translate(const std::wstring& input, const RuntimeConfig& runtime, HttpAgent& http, std::wstring& error) = 0;
+    std::wstring Kind() const { return settings_.kind; }
     std::wstring Name() const { return settings_.label.empty() ? settings_.kind : settings_.label; }
     void SetLogger(Logger logger) { logger_ = std::move(logger); }
 
@@ -60,8 +62,19 @@ private:
         std::wstring text;
     };
 
+    struct ProviderHealth
+    {
+        int failures = 0;
+        std::chrono::steady_clock::time_point coolUntil{};
+        std::chrono::steady_clock::time_point nextAllowed{};
+    };
+
     void Worker();
     std::wstring RunProviders(const std::wstring& text, HttpAgent& http);
+    void RememberCache(const std::wstring& text, const std::wstring& translated);
+    void WaitProviderTurn(size_t index);
+    bool ProviderCoolingDown(size_t index, std::chrono::steady_clock::time_point now) const;
+    void NoteProviderResult(size_t index, bool success, const std::wstring& error);
     void LogLine(const std::wstring& line) const;
 
     RuntimeConfig runtime_;
@@ -70,6 +83,7 @@ private:
     std::vector<std::unique_ptr<TranslateProvider>> providers_;
     std::vector<std::thread> workers_;
     std::queue<Job> jobs_;
+    std::unordered_map<std::wstring, std::vector<unsigned int>> inFlight_;
     mutable std::mutex jobsLock_;
     std::condition_variable jobsCv_;
     std::atomic<bool> running_{ false };
@@ -77,6 +91,8 @@ private:
 
     std::unordered_map<std::wstring, std::wstring> cache_;
     mutable std::mutex cacheLock_;
+    std::vector<ProviderHealth> providerHealth_;
+    mutable std::mutex providerHealthLock_;
     mutable std::mutex errorLock_;
     std::wstring lastError_;
 };

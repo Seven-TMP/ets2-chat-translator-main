@@ -97,6 +97,16 @@ const PROVIDER_PRESETS = {
     needsApiKey: true,
     needsSecret: true
   },
+  'tencent': {
+    kind: 'tencent',
+    label: '腾讯云机器翻译',
+    baseUrl: 'https://tmt.tencentcloudapi.com',
+    model: 'ap-guangzhou',
+    needsModel: true,
+    modelLabel: 'Region',
+    needsApiKey: true,
+    needsSecret: true
+  },
   'libretranslate': {
     kind: 'libretranslate',
     label: 'LibreTranslate',
@@ -168,6 +178,7 @@ function updatePreview() {
   els.model.closest('.form-group').style.display = selected.needsModel ? 'flex' : 'none';
   els.apiSecret.closest('.form-group').style.display = selected.needsSecret ? 'flex' : 'none';
   els.apiSecret.placeholder = selected.secretLabel || '签名平台需要';
+  els.model.closest('.form-group').querySelector('label').textContent = selected.modelLabel || '模型';
   els.apiKey.placeholder = selected.needsApiKey ? '必填' : '可选';
   els.preview.value = JSON.stringify(buildConfig(), null, 2);
 }
@@ -217,6 +228,7 @@ async function loadInstalledConfig(silent = false) {
       else if (kind === 'microsoft' || kind === 'azure_translator') els.preset.value = 'microsoft';
       else if (kind === 'baidu') els.preset.value = 'baidu';
       else if (kind === 'youdao') els.preset.value = 'youdao';
+      else if (kind === 'tencent' || kind === 'tencent_cloud' || kind === 'tencent_tmt') els.preset.value = 'tencent';
       else if (kind === 'libretranslate') els.preset.value = 'libretranslate';
       else els.preset.value = 'openai';
       els.providerLabel.value = primary.label || (PROVIDER_PRESETS[els.preset.value] || PROVIDER_PRESETS.openai).label;

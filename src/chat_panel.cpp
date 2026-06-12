@@ -19,6 +19,7 @@ const COLORREF cTrans = RGB(255, 215, 100);
 const COLORREF cWarn = RGB(239, 68, 68);
 const COLORREF cBlue = RGB(59, 130, 246);
 const COLORREF cCyan = RGB(34, 211, 238);
+constexpr int kTimeColumnW = 68;
 
 void Fill(HDC dc, RECT r, COLORREF color)
 {
@@ -65,6 +66,15 @@ std::wstring CompactStatus(const std::wstring& status)
     if (status.empty()) return L"翻译引擎准备就绪";
     return status;
 }
+
+int ApproxTextLines(const std::wstring& text, int width, int fontSize, int maxLines)
+{
+    if (text.empty()) return 1;
+    int avgCharW = (std::max)(7, fontSize / 2);
+    int charsPerLine = (std::max)(12, width / avgCharW);
+    int lines = (int)((text.size() + charsPerLine - 1) / charsPerLine);
+    return (std::max)(1, (std::min)(maxLines, lines));
+}
 }
 
 ChatPanel::ChatPanel()
@@ -79,11 +89,6 @@ ChatPanel::~ChatPanel()
 bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime)
 {
     instance_ = instance;
-    fontSize_ = (std::max)(12, (std::min)(28, runtime.fontSize));
-    rowH_ = fontSize_ + 12;
-    subRowH_ = fontSize_ + 9;
-    topBand_ = fontSize_ + 34;
-    statusBand_ = fontSize_ + 18;
 
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
@@ -95,14 +100,9 @@ bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime)
     wc.hbrBackground = nullptr;
     RegisterClassExW(&wc);
 
-    font_ = CreateFontW(fontSize_, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
-    smallFont_ = CreateFontW((std::max)(11, fontSize_ - 2), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
-    titleFont_ = CreateFontW(fontSize_ + 2, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+    ApplyRuntime(runtime);
 
-    int w = 560;
+    int w = 600;
     int h = 540;
     int x = GetSystemMetrics(SM_CXSCREEN) - w - 24;
     int y = 72;
@@ -112,11 +112,48 @@ bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime)
         x, y, w, h, nullptr, nullptr, instance_, this);
     if (!hwnd_) return false;
 
-    SetLayeredWindowAttributes(hwnd_, 0, 238, LWA_ALPHA);
+    SetLayeredWindowAttributes(hwnd_, 0, 250, LWA_ALPHA);
 
     ShowWindow(hwnd_, SW_SHOW);
     UpdateWindow(hwnd_);
     return true;
+}
+
+void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
+{
+    int nextFontSize = (std::max)(12, (std::min)(28, runtime.fontSize));
+
+    HFONT nextFont = CreateFontW(nextFontSize, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+    HFONT nextSmallFont = CreateFontW((std::max)(11, nextFontSize - 2), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+    HFONT nextTitleFont = CreateFontW(nextFontSize + 2, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+
+    if (!nextFont || !nextSmallFont || !nextTitleFont) {
+        if (nextFont) DeleteObject(nextFont);
+        if (nextSmallFont) DeleteObject(nextSmallFont);
+        if (nextTitleFont) DeleteObject(nextTitleFont);
+        return;
+    }
+
+    if (font_) DeleteObject(font_);
+    if (smallFont_) DeleteObject(smallFont_);
+    if (titleFont_) DeleteObject(titleFont_);
+    font_ = nextFont;
+    smallFont_ = nextSmallFont;
+    titleFont_ = nextTitleFont;
+
+    fontSize_ = nextFontSize;
+    rowH_ = fontSize_ + 12;
+    subRowH_ = fontSize_ + 9;
+    topBand_ = fontSize_ + 34;
+    statusBand_ = fontSize_ + 18;
+
+    if (hwnd_) {
+        ScrollToEnd();
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
 }
 
 void ChatPanel::Close()
@@ -346,36 +383,43 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
                     RoundFill(dc, card, 10, (i % 2 == 0) ? cCard : cCardAlt);
                     StrokeRound(dc, card, 10, RGB(39, 48, 65));
 
-                    RECT timeRc{ card.left + 12, card.top + 8, card.left + 62, card.top + 8 + rowH_ };
+                    RECT timeRc{ card.left + 12, card.top + 10, card.left + 12 + kTimeColumnW, card.top + 10 + rowH_ };
                     DrawTextLine(dc, smallFont_, cTime, e.time, timeRc, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
-                    int contentX = card.left + 66;
+                    int contentX = card.left + 14 + kTimeColumnW;
                     int contentRight = card.right - 14;
+                    int lineTop = card.top + 8;
                     if (!e.author.empty()) {
                         std::wstring name = e.author + L":";
-                        RECT nameRc{ contentX, card.top + 7, contentRight, card.top + 7 + rowH_ };
+                        RECT nameRc{ contentX, lineTop, contentRight, lineTop + rowH_ };
                         DrawTextLine(dc, font_, cName, name, nameRc, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS);
                         SIZE ns{};
                         HFONT old = (HFONT)SelectObject(dc, font_);
                         GetTextExtentPoint32W(dc, name.c_str(), (int)name.size(), &ns);
                         SelectObject(dc, old);
                         contentX += ns.cx + 6;
-                        if (contentX > contentRight - 80) contentX = card.left + 66;
+                        if (contentX > contentRight - 120) {
+                            contentX = card.left + 14 + kTimeColumnW;
+                            lineTop += rowH_ - 4;
+                        }
                     }
 
-                    RECT msgRc{ contentX, card.top + 7, contentRight, card.bottom };
+                    int textLines = ApproxTextLines(e.body, contentRight - contentX, fontSize_, 3);
+                    RECT msgRc{ contentX, lineTop, contentRight, lineTop + textLines * rowH_ };
                     DrawTextLine(dc, font_, cText, e.body, msgRc, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
 
                     if (!e.translated.empty()) {
-                        RECT transBg{ card.left + 66, card.bottom - subRowH_ - 10, card.right - 12, card.bottom - 8 };
+                        int transTop = msgRc.bottom + 8;
+                        int transLines = ApproxTextLines(e.translated, contentRight - (card.left + 14 + kTimeColumnW) - 22, fontSize_ - 2, 2);
+                        RECT transBg{ card.left + 14 + kTimeColumnW, transTop, card.right - 12, transTop + transLines * subRowH_ + 8 };
                         RoundFill(dc, transBg, 8, RGB(38, 43, 54));
 
-                        RECT transBar{ transBg.left, transBg.top, transBg.left + 4, transBg.bottom };
+                        RECT transBar{ transBg.left, transBg.top + 4, transBg.left + 4, transBg.bottom - 4 };
                         RoundFill(dc, transBar, 4, cBlue);
 
-                        RECT tr{ transBg.left + 12, transBg.top, transBg.right - 10, transBg.bottom };
+                        RECT tr{ transBg.left + 12, transBg.top + 4, transBg.right - 10, transBg.bottom - 4 };
                         DrawTextLine(dc, smallFont_, cTrans, e.translated, tr,
-                            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                            DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS);
                     }
                 }
             }
@@ -404,11 +448,13 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
 int ChatPanel::EntryHeight(const ChatEntry& entry) const
 {
     if (entry.serviceLine) return rowH_ + 12;
-    int approxChars = (std::max)(24, contentWidth_ / (std::max)(7, fontSize_ / 2));
-    int textLines = (std::max)(1, (int)((entry.body.size() + approxChars - 1) / approxChars));
-    textLines = (std::min)(3, textLines);
-    int h = 22 + textLines * rowH_;
-    if (!entry.translated.empty()) h += subRowH_ + 8;
+    int textWidth = (std::max)(80, contentWidth_ - kTimeColumnW - 10);
+    int textLines = ApproxTextLines(entry.body, textWidth, fontSize_, 3);
+    int h = 20 + textLines * rowH_ + 12;
+    if (!entry.translated.empty()) {
+        int transLines = ApproxTextLines(entry.translated, textWidth - 22, fontSize_ - 2, 2);
+        h += transLines * subRowH_ + 16;
+    }
     return (std::max)(rowH_ + 20, h);
 }
 

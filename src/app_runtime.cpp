@@ -121,6 +121,7 @@ void AppRuntime::CheckConfigReload()
     configWriteTime_ = current;
     AppSettings reloaded = settings::Load(configFile_);
     settings_ = std::move(reloaded);
+    if (panel_) panel_->ApplyRuntime(settings_.runtime);
 
     Log("[ChatTranslator] config changed, reloading translation engine");
     bool ok = StartTranslator();

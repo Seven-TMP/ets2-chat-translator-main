@@ -180,6 +180,17 @@ R"({
       "target": "zh-CN"
     },
     {
+      "kind": "tencent",
+      "label": "Tencent Cloud TMT",
+      "enabled": false,
+      "base_url": "https://tmt.tencentcloudapi.com",
+      "api_key": "",
+      "api_secret": "",
+      "model": "ap-guangzhou",
+      "source": "auto",
+      "target": "zh-CN"
+    },
+    {
       "kind": "microsoft",
       "label": "Microsoft Translator",
       "enabled": false,

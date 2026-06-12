@@ -4,7 +4,9 @@
 #include <windows.h>
 #include <wincrypt.h>
 #include <algorithm>
+#include <chrono>
 #include <cwctype>
+#include <thread>
 
 namespace
 {
@@ -188,6 +190,26 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         return L"抱歉，请";
     }
 
+    if (lower.find(L"cannot connect to server") != std::wstring::npos ||
+        lower.find(L"can't connect to server") != std::wstring::npos ||
+        lower.find(L"can not connect to server") != std::wstring::npos) {
+        return L"无法连接到服务器，可能是网络连接问题。";
+    }
+    if (lower.find(L"automatically reconnected") != std::wstring::npos ||
+        lower.find(L"automaticly reconnected") != std::wstring::npos ||
+        lower.find(L"reconnected within next") != std::wstring::npos ||
+        lower.find(L"reconnect within next") != std::wstring::npos) {
+        return L"将在接下来的几秒内自动重新连接。";
+    }
+    if (lower.find(L"connection established") != std::wstring::npos ||
+        lower.find(L"connected to server") != std::wstring::npos) {
+        return L"已连接到服务器。";
+    }
+    if (lower.find(L"connection refused") != std::wstring::npos ||
+        lower.find(L"connection timed out") != std::wstring::npos) {
+        return L"连接失败，请检查网络或稍后重试。";
+    }
+
     for (const auto& item : exact) {
         if (lower == item.key || edgeTrimmed == item.key) return item.value;
     }
@@ -242,6 +264,23 @@ std::wstring ReplyError(const NetReply& reply, const wchar_t* fallback)
     if (!reply.error.empty()) return reply.error;
     if (reply.status < 200 || reply.status >= 300) return StatusLabel(reply);
     return fallback;
+}
+
+std::wstring NowStamp()
+{
+    SYSTEMTIME t{};
+    GetLocalTime(&t);
+    wchar_t buf[32] = {};
+    swprintf_s(buf, L"%02u:%02u:%02u.%03u", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds);
+    return buf;
+}
+
+std::wstring WidenAscii(const std::string& value)
+{
+    std::wstring out;
+    out.reserve(value.size());
+    for (unsigned char ch : value) out.push_back((wchar_t)ch);
+    return out;
 }
 
 std::wstring FirstJsonString(const std::string& json, std::initializer_list<const char*> keys)
@@ -383,6 +422,77 @@ std::string HexHash(const std::string& data, ALG_ID alg)
     return out;
 }
 
+std::vector<BYTE> Sha256Bytes(const std::string& data)
+{
+    HCRYPTPROV provider = 0;
+    HCRYPTHASH hash = 0;
+    if (!CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return {};
+    if (!CryptCreateHash(provider, CALG_SHA_256, 0, 0, &hash)) {
+        CryptReleaseContext(provider, 0);
+        return {};
+    }
+    BOOL ok = CryptHashData(hash, (const BYTE*)data.data(), (DWORD)data.size(), 0);
+    DWORD size = 0;
+    DWORD sizeLen = sizeof(size);
+    if (ok) ok = CryptGetHashParam(hash, HP_HASHSIZE, (BYTE*)&size, &sizeLen, 0);
+    std::vector<BYTE> bytes(size);
+    if (ok && size > 0) ok = CryptGetHashParam(hash, HP_HASHVAL, bytes.data(), &size, 0);
+    CryptDestroyHash(hash);
+    CryptReleaseContext(provider, 0);
+    return ok ? bytes : std::vector<BYTE>{};
+}
+
+std::vector<BYTE> HmacSha256Bytes(const std::vector<BYTE>& key, const std::string& data)
+{
+    HCRYPTPROV provider = 0;
+    HCRYPTHASH hash = 0;
+    HCRYPTKEY cryptoKey = 0;
+    struct Blob
+    {
+        BLOBHEADER header;
+        DWORD keySize;
+    };
+
+    if (!CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return {};
+
+    std::vector<BYTE> blob(sizeof(Blob) + key.size());
+    auto* b = reinterpret_cast<Blob*>(blob.data());
+    b->header.bType = PLAINTEXTKEYBLOB;
+    b->header.bVersion = CUR_BLOB_VERSION;
+    b->header.reserved = 0;
+    b->header.aiKeyAlg = CALG_RC2;
+    b->keySize = (DWORD)key.size();
+    if (!key.empty()) memcpy(blob.data() + sizeof(Blob), key.data(), key.size());
+
+    BOOL ok = CryptImportKey(provider, blob.data(), (DWORD)blob.size(), 0, CRYPT_IPSEC_HMAC_KEY, &cryptoKey);
+    if (ok) ok = CryptCreateHash(provider, CALG_HMAC, cryptoKey, 0, &hash);
+    HMAC_INFO info{};
+    info.HashAlgid = CALG_SHA_256;
+    if (ok) ok = CryptSetHashParam(hash, HP_HMAC_INFO, (BYTE*)&info, 0);
+    if (ok) ok = CryptHashData(hash, (const BYTE*)data.data(), (DWORD)data.size(), 0);
+    DWORD size = 0;
+    DWORD sizeLen = sizeof(size);
+    if (ok) ok = CryptGetHashParam(hash, HP_HASHSIZE, (BYTE*)&size, &sizeLen, 0);
+    std::vector<BYTE> bytes(size);
+    if (ok && size > 0) ok = CryptGetHashParam(hash, HP_HASHVAL, bytes.data(), &size, 0);
+    if (hash) CryptDestroyHash(hash);
+    if (cryptoKey) CryptDestroyKey(cryptoKey);
+    CryptReleaseContext(provider, 0);
+    return ok ? bytes : std::vector<BYTE>{};
+}
+
+std::string BytesHex(const std::vector<BYTE>& bytes)
+{
+    static const char* hex = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (BYTE b : bytes) {
+        out.push_back(hex[(b >> 4) & 0xF]);
+        out.push_back(hex[b & 0xF]);
+    }
+    return out;
+}
+
 std::string Md5Hex(const std::wstring& data)
 {
     return HexHash(text::ToUtf8(data), CALG_MD5);
@@ -435,6 +545,30 @@ std::wstring TargetForYoudao(const std::wstring& target)
     if (target == L"zh-CN" || target == L"zh" || target == L"zh-Hans") return L"zh-CHS";
     if (target == L"zh-TW" || target == L"zh-Hant") return L"zh-CHT";
     return target.empty() ? L"zh-CHS" : target;
+}
+
+std::wstring TargetForTencent(const std::wstring& target)
+{
+    if (target == L"zh-CN" || target == L"zh-Hans") return L"zh";
+    if (target == L"zh-TW" || target == L"zh-Hant") return L"zh-TW";
+    return target.empty() ? L"zh" : target;
+}
+
+std::wstring SourceForTencent(const std::wstring& source)
+{
+    if (source.empty() || source == L"auto") return L"auto";
+    if (source == L"zh-CN" || source == L"zh-Hans") return L"zh";
+    if (source == L"zh-TW" || source == L"zh-Hant") return L"zh-TW";
+    return source;
+}
+
+std::string DateUtcForTencent()
+{
+    SYSTEMTIME st{};
+    GetSystemTime(&st);
+    char buf[16] = {};
+    sprintf_s(buf, "%04u-%02u-%02u", st.wYear, st.wMonth, st.wDay);
+    return buf;
 }
 
 class AndeerTranslator final : public TranslateProvider
@@ -919,6 +1053,89 @@ public:
     }
 };
 
+class TencentTranslator final : public TranslateProvider
+{
+public:
+    using TranslateProvider::TranslateProvider;
+    bool Ready() const override { return !settings_.apiKey.empty() && !settings_.apiSecret.empty(); }
+
+    std::wstring Translate(const std::wstring& input, const RuntimeConfig& runtime, HttpAgent& http, std::wstring& error) override
+    {
+        std::wstring host, prefix;
+        INTERNET_PORT port = 443;
+        bool tls = true;
+        std::wstring baseUrl = ProviderBaseUrl(settings_, L"https://tmt.tencentcloudapi.com");
+        if (!SplitUrl(baseUrl, host, port, prefix, tls)) {
+            error = L"bad base_url";
+            return L"";
+        }
+        if (prefix.empty()) prefix = L"/";
+
+        std::wstring source = SourceForTencent(settings_.sourceLanguage);
+        std::wstring target = TargetForTencent(runtime.targetLanguage);
+        std::string body = "{";
+        body += "\"SourceText\":\"" + text::EscapeJson(input) + "\",";
+        body += "\"Source\":\"" + text::EscapeJson(source) + "\",";
+        body += "\"Target\":\"" + text::EscapeJson(target) + "\",";
+        body += "\"ProjectId\":0";
+        body += "}";
+
+        std::string timestamp = text::ToUtf8(UnixSeconds());
+        std::string date = DateUtcForTencent();
+        std::string service = "tmt";
+        std::string canonicalHeaders = "content-type:application/json\nhost:" + text::ToUtf8(host) + "\n";
+        std::string signedHeaders = "content-type;host";
+        std::string hashedPayload = Sha256Hex(text::FromUtf8(body));
+        std::string canonicalRequest = "POST\n/\n\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + hashedPayload;
+        std::string credentialScope = date + "/" + service + "/tc3_request";
+        std::string stringToSign = "TC3-HMAC-SHA256\n" + timestamp + "\n" + credentialScope + "\n" +
+            BytesHex(Sha256Bytes(canonicalRequest));
+
+        std::vector<BYTE> secret = std::vector<BYTE>{ 'T', 'C', '3' };
+        std::string secretUtf8 = text::ToUtf8(settings_.apiSecret);
+        secret.insert(secret.end(), secretUtf8.begin(), secretUtf8.end());
+        std::vector<BYTE> dateKey = HmacSha256Bytes(secret, date);
+        std::vector<BYTE> serviceKey = HmacSha256Bytes(dateKey, service);
+        std::vector<BYTE> signingKey = HmacSha256Bytes(serviceKey, "tc3_request");
+        std::string signature = BytesHex(HmacSha256Bytes(signingKey, stringToSign));
+        if (signature.empty()) {
+            error = L"sign failed";
+            return L"";
+        }
+
+        std::wstring authorization = L"TC3-HMAC-SHA256 Credential=" + settings_.apiKey + L"/" +
+            WidenAscii(credentialScope) + L", SignedHeaders=" + WidenAscii(signedHeaders) +
+            L", Signature=" + WidenAscii(signature);
+        std::vector<HeaderPair> headers{
+            { L"Content-Type", L"application/json" },
+            { L"Accept", L"application/json" },
+            { L"Authorization", authorization },
+            { L"Host", host },
+            { L"X-TC-Action", L"TextTranslate" },
+            { L"X-TC-Version", L"2018-03-21" },
+            { L"X-TC-Timestamp", WidenAscii(timestamp) },
+            { L"X-TC-Region", settings_.model.empty() ? L"ap-guangzhou" : settings_.model }
+        };
+
+        NetReply r = http.Post(host, port, prefix, tls, body, headers);
+        LogLine(L"[TranslateHTTP] " + Name() + L" " + StatusLabel(r) + L" payload=" + PayloadPreview(r.payload));
+        if (r.payload.empty()) {
+            error = ReplyError(r, L"empty reply");
+            return L"";
+        }
+        if (r.status < 200 || r.status >= 300) {
+            error = ReplyError(r, L"HTTP error");
+            return L"";
+        }
+        std::wstring out = FirstJsonString(r.payload, { "TargetText", "translatedText", "translation", "text" });
+        if (out.empty()) {
+            std::wstring msg = FirstJsonString(r.payload, { "Message", "Code" });
+            error = msg.empty() ? L"cannot parse response" : msg;
+        }
+        return out;
+    }
+};
+
 std::unique_ptr<TranslateProvider> MakeProvider(const ProviderSettings& p)
 {
     std::wstring kind = p.kind;
@@ -935,6 +1152,7 @@ std::unique_ptr<TranslateProvider> MakeProvider(const ProviderSettings& p)
     if (kind == L"microsoft" || kind == L"azure_translator") return std::make_unique<MicrosoftTranslator>(p);
     if (kind == L"baidu" || kind == L"baidu_translate") return std::make_unique<BaiduTranslator>(p);
     if (kind == L"youdao") return std::make_unique<YoudaoTranslator>(p);
+    if (kind == L"tencent" || kind == L"tencent_cloud" || kind == L"tencent_tmt") return std::make_unique<TencentTranslator>(p);
     if (kind == L"openai_compatible" || kind == L"openai" || kind == L"chat_completions") {
         return std::make_unique<ChatCompletionsTranslator>(p);
     }
@@ -968,6 +1186,7 @@ bool TranslateEngine::Start(RuntimeConfig runtime, std::vector<ProviderSettings>
         lastError_ = L"no usable translation provider";
         return false;
     }
+    providerHealth_.assign(providers_.size(), ProviderHealth{});
 
     running_ = true;
     activeWorkers_ = (std::max)(1, (std::min)(32, runtime_.workerCount));
@@ -981,6 +1200,7 @@ void TranslateEngine::Stop()
     {
         std::lock_guard<std::mutex> g(jobsLock_);
         while (!jobs_.empty()) jobs_.pop();
+        inFlight_.clear();
     }
     jobsCv_.notify_all();
     for (auto& t : workers_) if (t.joinable()) t.join();
@@ -991,6 +1211,12 @@ void TranslateEngine::Stop()
 void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
 {
     if (!running_ || value.empty()) return;
+
+    std::wstring quick = ShortPhraseFallback(value);
+    if (!quick.empty()) {
+        if (done_) done_(id, quick);
+        return;
+    }
 
     {
         std::lock_guard<std::mutex> g(cacheLock_);
@@ -1003,14 +1229,44 @@ void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
 
     {
         std::lock_guard<std::mutex> g(jobsLock_);
+        auto inFlight = inFlight_.find(value);
+        if (inFlight != inFlight_.end()) {
+            inFlight->second.push_back(id);
+            return;
+        }
         if (jobs_.size() >= runtime_.queueLimit) {
             std::lock_guard<std::mutex> e(errorLock_);
             lastError_ = L"translation queue is full";
             return;
         }
+        inFlight_[value].push_back(id);
         jobs_.push({ id, value });
     }
     jobsCv_.notify_one();
+}
+
+int ProviderIntervalMs(const std::wstring& kind)
+{
+    std::wstring lower = LowerAscii(kind);
+    if (lower == L"mymemory") return 1100;
+    if (lower == L"andeer") return 650;
+    if (lower == L"libretranslate" || lower == L"libre_translate") return 450;
+    return 80;
+}
+
+bool RetryableProviderError(const std::wstring& error)
+{
+    return error.empty()
+        || error.find(L"request failed") != std::wstring::npos
+        || error.find(L"empty reply") != std::wstring::npos
+        || error.find(L"connect failed") != std::wstring::npos
+        || error.find(L"status=0") != std::wstring::npos
+        || error.find(L"HTTP 408") != std::wstring::npos
+        || error.find(L"HTTP 429") != std::wstring::npos
+        || error.find(L"HTTP 500") != std::wstring::npos
+        || error.find(L"HTTP 502") != std::wstring::npos
+        || error.find(L"HTTP 503") != std::wstring::npos
+        || error.find(L"HTTP 504") != std::wstring::npos;
 }
 
 std::wstring TranslateEngine::LastError() const
@@ -1036,7 +1292,20 @@ void TranslateEngine::Worker()
         }
 
         std::wstring out = RunProviders(job.text, http);
-        if (!out.empty() && done_ && running_) done_(job.id, out);
+        std::vector<unsigned int> ids;
+        {
+            std::lock_guard<std::mutex> g(jobsLock_);
+            auto found = inFlight_.find(job.text);
+            if (found != inFlight_.end()) {
+                ids = std::move(found->second);
+                inFlight_.erase(found);
+            } else {
+                ids.push_back(job.id);
+            }
+        }
+        if (!out.empty() && done_ && running_) {
+            for (unsigned int id : ids) done_(id, out);
+        }
     }
 }
 
@@ -1066,22 +1335,55 @@ std::wstring TranslateEngine::RunProviders(const std::wstring& value, HttpAgent&
     }
 
     std::wstring errors;
-    int providerIndex = 0;
-    for (auto& p : providers_) {
-        ++providerIndex;
+    for (size_t i = 0; i < providers_.size(); ++i) {
+        auto& p = providers_[i];
+        int providerIndex = (int)i + 1;
+        auto now = std::chrono::steady_clock::now();
+        if (ProviderCoolingDown(i, now)) {
+            std::wstring error = L"cooling down after repeated failures";
+            LogLine(L"[Translate] \"" + value + L"\" provider[" + std::to_wstring(providerIndex) + L"/" +
+                std::to_wstring(providers_.size()) + L"] " + p->Name() + L" skipped: " + error);
+            if (!errors.empty()) errors += L" | ";
+            errors += p->Name() + L": " + error;
+            continue;
+        }
+
         std::wstring error;
-        std::wstring out = p->Translate(value, runtime_, http, error);
+        std::wstring out;
+        std::wstring requestAt = NowStamp();
+        auto totalStarted = std::chrono::steady_clock::now();
+        int attemptCount = 0;
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            ++attemptCount;
+            error.clear();
+            WaitProviderTurn(i);
+            out = p->Translate(value, runtime_, http, error);
+            bool ok = !LooksUntranslated(value, out, runtime_);
+            if (ok || !RetryableProviderError(error)) break;
+            if (attempt == 0 && running_) {
+                LogLine(L"[Translate] \"" + value + L"\" provider[" + std::to_wstring(providerIndex) + L"/" +
+                    std::to_wstring(providers_.size()) + L"] " + p->Name() + L" retry after " +
+                    (error.empty() ? L"empty error" : error));
+                std::this_thread::sleep_for(std::chrono::milliseconds(180));
+            }
+        }
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - totalStarted).count();
         LogLine(L"[Translate] \"" + value + L"\" provider[" + std::to_wstring(providerIndex) + L"/" +
             std::to_wstring(providers_.size()) + L"] " + p->Name() + L" -> " +
-            (out.empty() ? L"(empty)" : out) + (error.empty() ? L"" : L" err=" + error));
+            (out.empty() ? L"(empty)" : out) +
+            L" at=" + requestAt +
+            L" ms=" + std::to_wstring(elapsed) +
+            L" attempts=" + std::to_wstring(attemptCount) +
+            (error.empty() ? L"" : L" err=" + error));
 
         if (!LooksUntranslated(value, out, runtime_)) {
-            std::lock_guard<std::mutex> g(cacheLock_);
-            if (cache_.size() >= runtime_.cacheLimit && !cache_.empty()) cache_.erase(cache_.begin());
-            cache_[value] = out;
+            NoteProviderResult(i, true, L"");
+            RememberCache(value, out);
             return out;
         }
         if (!out.empty() && error.empty()) error = L"returned original/non-target text";
+        NoteProviderResult(i, false, error);
         if (!errors.empty()) errors += L" | ";
         errors += p->Name() + L": " + error;
     }
@@ -1091,6 +1393,63 @@ std::wstring TranslateEngine::RunProviders(const std::wstring& value, HttpAgent&
         lastError_ = errors.empty() ? L"translation failed" : errors;
     }
     return errors.empty() ? L"" : L"[\x7FFB\x8BD1\x5931\x8D25: " + errors + L"]";
+}
+
+void TranslateEngine::RememberCache(const std::wstring& text, const std::wstring& translated)
+{
+    std::lock_guard<std::mutex> g(cacheLock_);
+    if (cache_.size() >= runtime_.cacheLimit && !cache_.empty()) cache_.erase(cache_.begin());
+    cache_[text] = translated;
+}
+
+void TranslateEngine::WaitProviderTurn(size_t index)
+{
+    int intervalMs = 80;
+    if (index < providers_.size()) intervalMs = ProviderIntervalMs(providers_[index]->Kind());
+
+    while (running_) {
+        auto now = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point waitUntil{};
+        {
+            std::lock_guard<std::mutex> g(providerHealthLock_);
+            if (index >= providerHealth_.size()) return;
+            auto& h = providerHealth_[index];
+            if (h.nextAllowed <= now) {
+                h.nextAllowed = now + std::chrono::milliseconds(intervalMs);
+                return;
+            }
+            waitUntil = h.nextAllowed;
+        }
+
+        auto waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(waitUntil - now);
+        if (waitMs.count() <= 0) continue;
+        std::this_thread::sleep_for((std::min)(waitMs, std::chrono::milliseconds(200)));
+    }
+}
+
+bool TranslateEngine::ProviderCoolingDown(size_t index, std::chrono::steady_clock::time_point now) const
+{
+    std::lock_guard<std::mutex> g(providerHealthLock_);
+    if (index >= providerHealth_.size()) return false;
+    return providerHealth_[index].coolUntil > now;
+}
+
+void TranslateEngine::NoteProviderResult(size_t index, bool success, const std::wstring& error)
+{
+    std::lock_guard<std::mutex> g(providerHealthLock_);
+    if (index >= providerHealth_.size()) return;
+    auto& h = providerHealth_[index];
+    if (success) {
+        h.failures = 0;
+        h.coolUntil = {};
+        return;
+    }
+
+    ++h.failures;
+    if (RetryableProviderError(error) && h.failures >= 2) {
+        int seconds = (std::min)(45, 8 + h.failures * 6);
+        h.coolUntil = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    }
 }
 
 void TranslateEngine::LogLine(const std::wstring& line) const
