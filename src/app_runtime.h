@@ -15,7 +15,7 @@
 class AppRuntime
 {
 public:
-    AppRuntime(HINSTANCE dll, scs_log_t logger);
+    AppRuntime(HINSTANCE dll, scs_log_t logger, std::wstring gameId = L"", std::wstring gameName = L"");
     ~AppRuntime();
 
     bool Start();
@@ -34,6 +34,8 @@ private:
 
     HINSTANCE dll_ = nullptr;
     scs_log_t logger_ = nullptr;
+    std::wstring gameId_;
+    std::wstring gameName_;
     std::atomic<bool> alive_{ false };
     std::thread ui_;
 

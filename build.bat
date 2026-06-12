@@ -58,7 +58,7 @@ cl.exe /nologo /EHsc /O2 /std:c++17 /utf-8 /W3 ^
     src\translate_engine.cpp src\http_agent.cpp src\settings_store.cpp ^
     src\text_codec.cpp src\win_paths.cpp ^
     /link /DLL /DEF:exports.def /MACHINE:X64 ^
-    user32.lib gdi32.lib winhttp.lib shell32.lib advapi32.lib shlwapi.lib
+    user32.lib gdi32.lib winhttp.lib shell32.lib advapi32.lib shlwapi.lib crypt32.lib
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Plugin build failed.

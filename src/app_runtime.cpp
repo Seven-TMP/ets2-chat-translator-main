@@ -3,9 +3,14 @@
 #include "text_codec.h"
 #include "win_paths.h"
 
-AppRuntime::AppRuntime(HINSTANCE dll, scs_log_t logger)
+#include <algorithm>
+#include <cwctype>
+
+AppRuntime::AppRuntime(HINSTANCE dll, scs_log_t logger, std::wstring gameId, std::wstring gameName)
     : dll_(dll)
     , logger_(logger)
+    , gameId_(std::move(gameId))
+    , gameName_(std::move(gameName))
 {
 }
 
@@ -51,7 +56,13 @@ bool AppRuntime::Boot()
 {
     pluginFolder_ = paths::ModuleFolder(dll_);
     configFile_ = pluginFolder_ + L"\\ets2_chat_translator_config.json";
-    logFolder_ = paths::DocumentsFolder() + L"\\ETS2MP\\logs";
+    std::wstring lowerGame = gameId_ + L" " + gameName_;
+    std::transform(lowerGame.begin(), lowerGame.end(), lowerGame.begin(), [](wchar_t ch) {
+        return (wchar_t)towlower(ch);
+    });
+    bool ats = lowerGame.find(L"ats") != std::wstring::npos
+        || lowerGame.find(L"american") != std::wstring::npos;
+    logFolder_ = paths::DocumentsFolder() + (ats ? L"\\ATSMP\\logs" : L"\\ETS2MP\\logs");
 
     if (!paths::ExistsFile(configFile_)) settings::WriteDefaultFile(configFile_);
     settings_ = settings::Load(configFile_);
@@ -83,6 +94,7 @@ bool AppRuntime::Boot()
     });
 
     Log("[ChatTranslator] runtime started");
+    LogValue(L"[ChatTranslator] game: ", gameName_.empty() ? gameId_ : gameName_ + L" (" + gameId_ + L")");
     LogValue(L"[ChatTranslator] log folder: ", logFolder_);
     return true;
 }

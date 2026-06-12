@@ -5,6 +5,7 @@
 #include <wincrypt.h>
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cwctype>
 #include <thread>
 
@@ -283,6 +284,28 @@ std::wstring WidenAscii(const std::string& value)
     return out;
 }
 
+std::wstring Rfc3986Encode(const std::wstring& value)
+{
+    std::string utf8 = text::ToUtf8(value);
+    std::wstring out;
+    out.reserve(utf8.size() * 3);
+    static const wchar_t* hex = L"0123456789ABCDEF";
+    for (unsigned char ch : utf8) {
+        bool unreserved = (ch >= 'A' && ch <= 'Z')
+            || (ch >= 'a' && ch <= 'z')
+            || (ch >= '0' && ch <= '9')
+            || ch == '-' || ch == '_' || ch == '.' || ch == '~';
+        if (unreserved) {
+            out.push_back((wchar_t)ch);
+        } else {
+            out.push_back(L'%');
+            out.push_back(hex[(ch >> 4) & 0xF]);
+            out.push_back(hex[ch & 0xF]);
+        }
+    }
+    return out;
+}
+
 std::wstring FirstJsonString(const std::string& json, std::initializer_list<const char*> keys)
 {
     for (const char* key : keys) {
@@ -493,9 +516,66 @@ std::string BytesHex(const std::vector<BYTE>& bytes)
     return out;
 }
 
+std::string BytesBase64(const std::vector<BYTE>& bytes)
+{
+    if (bytes.empty()) return "";
+    DWORD needed = 0;
+    if (!CryptBinaryToStringA(bytes.data(), (DWORD)bytes.size(),
+        CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &needed)) {
+        return "";
+    }
+    std::string out(needed, '\0');
+    if (!CryptBinaryToStringA(bytes.data(), (DWORD)bytes.size(),
+        CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, out.data(), &needed)) {
+        return "";
+    }
+    while (!out.empty() && out.back() == '\0') out.pop_back();
+    return out;
+}
+
 std::string Md5Hex(const std::wstring& data)
 {
     return HexHash(text::ToUtf8(data), CALG_MD5);
+}
+
+std::string HmacSha1Base64(const std::wstring& key, const std::string& data)
+{
+    HCRYPTPROV provider = 0;
+    HCRYPTHASH hash = 0;
+    HCRYPTKEY cryptoKey = 0;
+    struct Blob
+    {
+        BLOBHEADER header;
+        DWORD keySize;
+    };
+
+    std::string keyUtf8 = text::ToUtf8(key);
+    if (!CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return "";
+
+    std::vector<BYTE> blob(sizeof(Blob) + keyUtf8.size());
+    auto* b = reinterpret_cast<Blob*>(blob.data());
+    b->header.bType = PLAINTEXTKEYBLOB;
+    b->header.bVersion = CUR_BLOB_VERSION;
+    b->header.reserved = 0;
+    b->header.aiKeyAlg = CALG_RC2;
+    b->keySize = (DWORD)keyUtf8.size();
+    if (!keyUtf8.empty()) memcpy(blob.data() + sizeof(Blob), keyUtf8.data(), keyUtf8.size());
+
+    BOOL ok = CryptImportKey(provider, blob.data(), (DWORD)blob.size(), 0, CRYPT_IPSEC_HMAC_KEY, &cryptoKey);
+    if (ok) ok = CryptCreateHash(provider, CALG_HMAC, cryptoKey, 0, &hash);
+    HMAC_INFO info{};
+    info.HashAlgid = CALG_SHA1;
+    if (ok) ok = CryptSetHashParam(hash, HP_HMAC_INFO, (BYTE*)&info, 0);
+    if (ok) ok = CryptHashData(hash, (const BYTE*)data.data(), (DWORD)data.size(), 0);
+    DWORD size = 0;
+    DWORD sizeLen = sizeof(size);
+    if (ok) ok = CryptGetHashParam(hash, HP_HASHSIZE, (BYTE*)&size, &sizeLen, 0);
+    std::vector<BYTE> bytes(size);
+    if (ok && size > 0) ok = CryptGetHashParam(hash, HP_HASHVAL, bytes.data(), &size, 0);
+    if (hash) CryptDestroyHash(hash);
+    if (cryptoKey) CryptDestroyKey(cryptoKey);
+    CryptReleaseContext(provider, 0);
+    return ok ? BytesBase64(bytes) : "";
 }
 
 std::string Sha256Hex(const std::wstring& data)
@@ -519,6 +599,29 @@ std::wstring UnixSeconds()
     value.HighPart = ft.dwHighDateTime;
     unsigned long long seconds = (value.QuadPart - 116444736000000000ULL) / 10000000ULL;
     return std::to_wstring(seconds);
+}
+
+std::wstring Iso8601Utc()
+{
+    SYSTEMTIME st{};
+    GetSystemTime(&st);
+    wchar_t buf[32] = {};
+    swprintf_s(buf, L"%04u-%02u-%02uT%02u:%02u:%02uZ",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    return buf;
+}
+
+std::string VolcDateTimeUtc(std::string& date)
+{
+    SYSTEMTIME st{};
+    GetSystemTime(&st);
+    char buf[32] = {};
+    sprintf_s(buf, "%04u%02u%02uT%02u%02u%02uZ",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    char dateBuf[16] = {};
+    sprintf_s(dateBuf, "%04u%02u%02u", st.wYear, st.wMonth, st.wDay);
+    date = dateBuf;
+    return buf;
 }
 
 std::wstring YoudaoInputForSign(const std::wstring& input)
@@ -569,6 +672,51 @@ std::string DateUtcForTencent()
     char buf[16] = {};
     sprintf_s(buf, "%04u-%02u-%02u", st.wYear, st.wMonth, st.wDay);
     return buf;
+}
+
+std::wstring TargetForAliyun(const std::wstring& target)
+{
+    if (target == L"zh-CN" || target == L"zh-Hans") return L"zh";
+    if (target == L"zh-TW" || target == L"zh-Hant") return L"cht";
+    if (target == L"ja") return L"ja";
+    return target.empty() ? L"zh" : target;
+}
+
+std::wstring SourceForAliyun(const std::wstring& source)
+{
+    if (source.empty()) return L"auto";
+    if (source == L"zh-CN" || source == L"zh-Hans") return L"zh";
+    if (source == L"zh-TW" || source == L"zh-Hant") return L"cht";
+    return source;
+}
+
+std::wstring TargetForVolcengine(const std::wstring& target)
+{
+    if (target == L"zh-CN" || target == L"zh-Hans") return L"zh";
+    if (target == L"zh-TW" || target == L"zh-Hant") return L"zh-Hant";
+    return target.empty() ? L"zh" : target;
+}
+
+std::wstring SourceForVolcengine(const std::wstring& source)
+{
+    if (source.empty() || source == L"auto") return L"";
+    if (source == L"zh-CN" || source == L"zh-Hans") return L"zh";
+    if (source == L"zh-TW" || source == L"zh-Hant") return L"zh-Hant";
+    return source;
+}
+
+std::wstring AliyunCanonicalQuery(std::vector<std::pair<std::wstring, std::wstring>> params)
+{
+    std::sort(params.begin(), params.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+    });
+
+    std::wstring query;
+    for (const auto& item : params) {
+        if (!query.empty()) query += L"&";
+        query += Rfc3986Encode(item.first) + L"=" + Rfc3986Encode(item.second);
+    }
+    return query;
 }
 
 class AndeerTranslator final : public TranslateProvider
@@ -1136,6 +1284,155 @@ public:
     }
 };
 
+class AliyunTranslator final : public TranslateProvider
+{
+public:
+    using TranslateProvider::TranslateProvider;
+    bool Ready() const override { return !settings_.apiKey.empty() && !settings_.apiSecret.empty(); }
+
+    std::wstring Translate(const std::wstring& input, const RuntimeConfig& runtime, HttpAgent& http, std::wstring& error) override
+    {
+        std::wstring host, prefix;
+        INTERNET_PORT port = 443;
+        bool tls = true;
+        std::wstring baseUrl = ProviderBaseUrl(settings_, L"https://mt.cn-hangzhou.aliyuncs.com");
+        if (!SplitUrl(baseUrl, host, port, prefix, tls)) {
+            error = L"bad base_url";
+            return L"";
+        }
+        if (prefix.empty()) prefix = L"/";
+
+        std::wstring scene = settings_.model.empty() ? L"general" : settings_.model;
+        std::vector<std::pair<std::wstring, std::wstring>> params{
+            { L"AccessKeyId", settings_.apiKey },
+            { L"Action", L"TranslateGeneral" },
+            { L"Format", L"JSON" },
+            { L"FormatType", L"text" },
+            { L"RegionId", L"cn-hangzhou" },
+            { L"Scene", scene },
+            { L"SignatureMethod", L"HMAC-SHA1" },
+            { L"SignatureNonce", RandomSalt() },
+            { L"SignatureVersion", L"1.0" },
+            { L"SourceLanguage", SourceForAliyun(settings_.sourceLanguage) },
+            { L"SourceText", input },
+            { L"TargetLanguage", TargetForAliyun(runtime.targetLanguage) },
+            { L"Timestamp", Iso8601Utc() },
+            { L"Version", L"2018-10-12" }
+        };
+
+        std::wstring canonical = AliyunCanonicalQuery(params);
+        std::string stringToSign = "GET&%2F&" + text::ToUtf8(Rfc3986Encode(canonical));
+        std::string signature = HmacSha1Base64(settings_.apiSecret + L"&", stringToSign);
+        if (signature.empty()) {
+            error = L"sign failed";
+            return L"";
+        }
+
+        std::wstring path = prefix + L"?" + canonical + L"&Signature=" + Rfc3986Encode(text::FromUtf8(signature));
+        NetReply r = http.Get(host, port, path, tls, { { L"Accept", L"application/json" } });
+        LogLine(L"[TranslateHTTP] " + Name() + L" " + StatusLabel(r) + L" payload=" + PayloadPreview(r.payload));
+        if (r.payload.empty()) {
+            error = ReplyError(r, L"empty reply");
+            return L"";
+        }
+        if (r.status < 200 || r.status >= 300) {
+            error = ReplyError(r, L"HTTP error");
+            return L"";
+        }
+
+        std::wstring out = FirstJsonString(r.payload, { "Translated", "translatedText", "translation", "text" });
+        if (out.empty()) {
+            std::wstring msg = FirstJsonString(r.payload, { "Message", "Code" });
+            error = msg.empty() ? L"cannot parse response" : msg;
+        }
+        return out;
+    }
+};
+
+class VolcengineTranslator final : public TranslateProvider
+{
+public:
+    using TranslateProvider::TranslateProvider;
+    bool Ready() const override { return !settings_.apiKey.empty() && !settings_.apiSecret.empty(); }
+
+    std::wstring Translate(const std::wstring& input, const RuntimeConfig& runtime, HttpAgent& http, std::wstring& error) override
+    {
+        std::wstring host, prefix;
+        INTERNET_PORT port = 443;
+        bool tls = true;
+        std::wstring baseUrl = ProviderBaseUrl(settings_, L"https://translate.volcengineapi.com");
+        if (!SplitUrl(baseUrl, host, port, prefix, tls)) {
+            error = L"bad base_url";
+            return L"";
+        }
+        if (prefix.empty()) prefix = L"/";
+
+        std::wstring region = settings_.model.empty() ? L"cn-north-1" : settings_.model;
+        std::wstring path = prefix + L"?Action=TranslateText&Version=2020-06-01";
+        std::string body = "{";
+        body += "\"TextList\":[\"" + text::EscapeJson(input) + "\"],";
+        std::wstring source = SourceForVolcengine(settings_.sourceLanguage);
+        if (!source.empty()) body += "\"SourceLanguage\":\"" + text::EscapeJson(source) + "\",";
+        body += "\"TargetLanguage\":\"" + text::EscapeJson(TargetForVolcengine(runtime.targetLanguage)) + "\"";
+        body += "}";
+
+        std::string date;
+        std::string amzDate = VolcDateTimeUtc(date);
+        std::string payloadHash = Sha256Hex(text::FromUtf8(body));
+        std::string hostUtf8 = text::ToUtf8(host);
+        std::string canonicalHeaders = "content-type:application/json\nhost:" + hostUtf8 + "\nx-content-sha256:" +
+            payloadHash + "\nx-date:" + amzDate + "\n";
+        std::string signedHeaders = "content-type;host;x-content-sha256;x-date";
+        std::string canonicalRequest = "POST\n/\nAction=TranslateText&Version=2020-06-01\n" +
+            canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash;
+        std::string credentialScope = date + "/" + text::ToUtf8(region) + "/translate/request";
+        std::string stringToSign = "HMAC-SHA256\n" + amzDate + "\n" + credentialScope + "\n" +
+            BytesHex(Sha256Bytes(canonicalRequest));
+
+        std::string secretUtf8 = text::ToUtf8(settings_.apiSecret);
+        std::vector<BYTE> secret(secretUtf8.begin(), secretUtf8.end());
+        std::vector<BYTE> dateKey = HmacSha256Bytes(secret, date);
+        std::vector<BYTE> regionKey = HmacSha256Bytes(dateKey, text::ToUtf8(region));
+        std::vector<BYTE> serviceKey = HmacSha256Bytes(regionKey, "translate");
+        std::vector<BYTE> signingKey = HmacSha256Bytes(serviceKey, "request");
+        std::string signature = BytesHex(HmacSha256Bytes(signingKey, stringToSign));
+        if (signature.empty()) {
+            error = L"sign failed";
+            return L"";
+        }
+
+        std::wstring authorization = L"HMAC-SHA256 Credential=" + settings_.apiKey + L"/" +
+            WidenAscii(credentialScope) + L", SignedHeaders=" + WidenAscii(signedHeaders) +
+            L", Signature=" + WidenAscii(signature);
+        std::vector<HeaderPair> headers{
+            { L"Content-Type", L"application/json" },
+            { L"Accept", L"application/json" },
+            { L"Host", host },
+            { L"X-Date", WidenAscii(amzDate) },
+            { L"X-Content-Sha256", WidenAscii(payloadHash) },
+            { L"Authorization", authorization }
+        };
+
+        NetReply r = http.Post(host, port, path, tls, body, headers);
+        LogLine(L"[TranslateHTTP] " + Name() + L" " + StatusLabel(r) + L" payload=" + PayloadPreview(r.payload));
+        if (r.payload.empty()) {
+            error = ReplyError(r, L"empty reply");
+            return L"";
+        }
+        if (r.status < 200 || r.status >= 300) {
+            error = ReplyError(r, L"HTTP error");
+            return L"";
+        }
+
+        std::wstring out = FirstJsonString(r.payload, { "Translation", "TranslationText", "translatedText", "translation", "text" });
+        if (out.empty()) {
+            std::wstring msg = FirstJsonString(r.payload, { "Message", "Code" });
+            error = msg.empty() ? L"cannot parse response" : msg;
+        }
+        return out;
+    }
+};
+
 std::unique_ptr<TranslateProvider> MakeProvider(const ProviderSettings& p)
 {
     std::wstring kind = p.kind;
@@ -1153,6 +1450,8 @@ std::unique_ptr<TranslateProvider> MakeProvider(const ProviderSettings& p)
     if (kind == L"baidu" || kind == L"baidu_translate") return std::make_unique<BaiduTranslator>(p);
     if (kind == L"youdao") return std::make_unique<YoudaoTranslator>(p);
     if (kind == L"tencent" || kind == L"tencent_cloud" || kind == L"tencent_tmt") return std::make_unique<TencentTranslator>(p);
+    if (kind == L"aliyun" || kind == L"alibaba" || kind == L"alibaba_cloud" || kind == L"alimt") return std::make_unique<AliyunTranslator>(p);
+    if (kind == L"volcengine" || kind == L"volc" || kind == L"volc_translate" || kind == L"huoshan") return std::make_unique<VolcengineTranslator>(p);
     if (kind == L"openai_compatible" || kind == L"openai" || kind == L"chat_completions") {
         return std::make_unique<ChatCompletionsTranslator>(p);
     }

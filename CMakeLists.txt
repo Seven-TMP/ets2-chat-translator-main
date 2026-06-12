@@ -47,6 +47,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     shell32
     advapi32
     shlwapi
+    crypt32
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

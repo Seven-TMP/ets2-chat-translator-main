@@ -16,6 +16,7 @@ struct ChatEntry
 struct RuntimeConfig
 {
     std::wstring targetLanguage = L"zh-CN";
+    std::wstring overlayHotkey = L"Ctrl+Shift+T";
     int workerCount = 8;
     size_t queueLimit = 1000;
     size_t cacheLimit = 1500;

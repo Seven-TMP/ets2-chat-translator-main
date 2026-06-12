@@ -1,11 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('managerApi', {
-  detectPath: () => ipcRenderer.invoke('detect-path'),
-  browsePath: () => ipcRenderer.invoke('browse-path'),
-  state: (ets2Path) => ipcRenderer.invoke('state', ets2Path),
-  installDll: (ets2Path) => ipcRenderer.invoke('install-dll', ets2Path),
-  uninstallDll: (ets2Path) => ipcRenderer.invoke('uninstall-dll', ets2Path),
-  readConfig: (ets2Path) => ipcRenderer.invoke('read-config', ets2Path),
-  writeConfig: (ets2Path, jsonText) => ipcRenderer.invoke('write-config', ets2Path, jsonText)
+  detectPath: (game) => ipcRenderer.invoke('detect-path', game),
+  browsePath: (game) => ipcRenderer.invoke('browse-path', game),
+  state: (game, gamePath) => ipcRenderer.invoke('state', game, gamePath),
+  installDll: (game, gamePath) => ipcRenderer.invoke('install-dll', game, gamePath),
+  uninstallDll: (game, gamePath) => ipcRenderer.invoke('uninstall-dll', game, gamePath),
+  readConfig: (game, gamePath) => ipcRenderer.invoke('read-config', game, gamePath),
+  writeConfig: (game, gamePath, jsonText) => ipcRenderer.invoke('write-config', game, gamePath, jsonText)
 });

@@ -97,6 +97,7 @@ AppSettings Load(const std::wstring& path)
     if (json.empty()) return s;
 
     s.runtime.targetLanguage = Jstr(json, "target_lang", s.runtime.targetLanguage);
+    s.runtime.overlayHotkey = Jstr(json, "overlay_hotkey", s.runtime.overlayHotkey);
     s.runtime.workerCount = (std::max)(1, (std::min)(32, Jint(json, "workers", s.runtime.workerCount)));
     s.runtime.queueLimit = (size_t)(std::max)(50, Jint(json, "queue_limit", (int)s.runtime.queueLimit));
     s.runtime.cacheLimit = (size_t)(std::max)(100, Jint(json, "cache_limit", (int)s.runtime.cacheLimit));
@@ -131,6 +132,7 @@ bool WriteDefaultFile(const std::wstring& path)
     f <<
 R"({
   "target_lang": "zh-CN",
+  "overlay_hotkey": "Ctrl+Shift+T",
   "workers": 8,
   "queue_limit": 1000,
   "cache_limit": 1500,
@@ -187,6 +189,28 @@ R"({
       "api_key": "",
       "api_secret": "",
       "model": "ap-guangzhou",
+      "source": "auto",
+      "target": "zh-CN"
+    },
+    {
+      "kind": "aliyun",
+      "label": "Aliyun Machine Translation",
+      "enabled": false,
+      "base_url": "https://mt.cn-hangzhou.aliyuncs.com",
+      "api_key": "",
+      "api_secret": "",
+      "model": "general",
+      "source": "auto",
+      "target": "zh-CN"
+    },
+    {
+      "kind": "volcengine",
+      "label": "Volcengine Translate",
+      "enabled": false,
+      "base_url": "https://translate.volcengineapi.com",
+      "api_key": "",
+      "api_secret": "",
+      "model": "cn-north-1",
       "source": "auto",
       "target": "zh-CN"
     },

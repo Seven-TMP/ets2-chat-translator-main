@@ -17,7 +17,7 @@
     <main class="shell">
       <header class="topbar glass-panel">
         <div class="header-content">
-          <h1>ETS2 Translator <span class="accent">Manager</span></h1>
+          <h1>Truck Translator <span class="accent">Manager</span></h1>
           <p>安装插件 DLL，管理翻译配置。</p>
         </div>
         <div id="statusPill" class="pill">准备就绪</div>
@@ -27,12 +27,16 @@
         <div class="section-title">
           <div class="title-with-icon">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
-            <h2>欧卡 2 路径与安装</h2>
+              <h2>游戏路径与安装</h2>
           </div>
           <span id="installState" class="status-badge">正在检查...</span>
         </div>
+        <div class="game-switch">
+          <button type="button" class="game-tab active" data-game="ets2">ETS2</button>
+          <button type="button" class="game-tab" data-game="ats">ATS</button>
+        </div>
         <div class="path-row">
-          <label for="ets2Path">ETS2 安装目录</label>
+          <label id="gamePathLabel" for="ets2Path">ETS2 安装目录</label>
           <div class="input-group">
             <input id="ets2Path" type="text" spellcheck="false" placeholder="等待识别..." />
             <div class="btn-group">
@@ -71,6 +75,8 @@
                   <option value="baidu">百度翻译</option>
                   <option value="youdao">有道智云</option>
                   <option value="tencent">腾讯云机器翻译</option>
+                  <option value="aliyun">阿里云机器翻译</option>
+                  <option value="volcengine">火山翻译</option>
                   <option value="libretranslate">LibreTranslate</option>
                   <option value="free">仅免费兜底</option>
                 </select>
@@ -119,6 +125,11 @@
                 <button type="button" class="preset-btn" data-size="22">大 22</button>
                 <button type="button" class="preset-btn" data-size="26">特大 26</button>
               </div>
+            </div>
+
+            <div class="form-group">
+              <label>悬浮窗快捷键</label>
+              <input id="overlayHotkey" value="Ctrl+Shift+T" spellcheck="false" />
             </div>
           </div>
 

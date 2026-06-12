@@ -18,10 +18,12 @@ public:
     void Close();
     void MessageLoop();
     void ApplyRuntime(const RuntimeConfig& runtime);
+    bool SetOverlayHotkey(const std::wstring& hotkey);
 
     unsigned int Push(ChatEntry entry);
     void PatchTranslation(unsigned int id, const std::wstring& text);
     void Status(const std::wstring& text);
+    void ToggleVisible();
     HWND Window() const { return hwnd_; }
 
 private:
@@ -57,8 +59,12 @@ private:
     int fontSize_ = 18;
     int contentWidth_ = 420;
     int scroll_ = 0;
+    DWORD uiThreadId_ = 0;
     bool follow_ = true;
     bool closing_ = false;
+    int hotkeyId_ = 0x4554;
+    bool hotkeyRegistered_ = false;
+    std::wstring overlayHotkey_ = L"Ctrl+Shift+T";
 
     void DrainPending();
 };

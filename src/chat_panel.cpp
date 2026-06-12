@@ -1,6 +1,8 @@
 #include "chat_panel.h"
+#include "text_codec.h"
 
 #include <algorithm>
+#include <cwctype>
 #include <windowsx.h>
 
 namespace
@@ -75,6 +77,57 @@ int ApproxTextLines(const std::wstring& text, int width, int fontSize, int maxLi
     int lines = (int)((text.size() + charsPerLine - 1) / charsPerLine);
     return (std::max)(1, (std::min)(maxLines, lines));
 }
+
+bool ParseHotkey(const std::wstring& hotkey, UINT& modifiers, UINT& vk)
+{
+    modifiers = 0;
+    vk = 0;
+    std::wstring token;
+    std::vector<std::wstring> parts;
+    for (wchar_t ch : hotkey) {
+        if (ch == L'+' || ch == L' ' || ch == L'\t' || ch == L'-') {
+            token = text::Trim(token);
+            if (!token.empty()) parts.push_back(token);
+            token.clear();
+        } else {
+            token.push_back((wchar_t)towupper(ch));
+        }
+    }
+    token = text::Trim(token);
+    if (!token.empty()) parts.push_back(token);
+
+    for (const auto& part : parts) {
+        if (part == L"CTRL" || part == L"CONTROL") modifiers |= MOD_CONTROL;
+        else if (part == L"SHIFT") modifiers |= MOD_SHIFT;
+        else if (part == L"ALT") modifiers |= MOD_ALT;
+        else if (part == L"WIN" || part == L"META") modifiers |= MOD_WIN;
+        else if (part.size() == 1 && part[0] >= L'A' && part[0] <= L'Z') vk = (UINT)part[0];
+        else if (part.size() == 1 && part[0] >= L'0' && part[0] <= L'9') vk = (UINT)part[0];
+        else if (part.size() >= 2 && part[0] == L'F') {
+            try {
+                int n = std::stoi(part.substr(1));
+                if (n >= 1 && n <= 24) vk = VK_F1 + (UINT)n - 1;
+            } catch (...) {
+                return false;
+            }
+        } else if (part == L"INSERT" || part == L"INS") vk = VK_INSERT;
+        else if (part == L"DELETE" || part == L"DEL") vk = VK_DELETE;
+        else if (part == L"HOME") vk = VK_HOME;
+        else if (part == L"END") vk = VK_END;
+        else if (part == L"PAGEUP" || part == L"PGUP") vk = VK_PRIOR;
+        else if (part == L"PAGEDOWN" || part == L"PGDN") vk = VK_NEXT;
+        else if (part == L"UP") vk = VK_UP;
+        else if (part == L"DOWN") vk = VK_DOWN;
+        else if (part == L"LEFT") vk = VK_LEFT;
+        else if (part == L"RIGHT") vk = VK_RIGHT;
+        else if (part == L"SPACE") vk = VK_SPACE;
+        else if (part == L"TAB") vk = VK_TAB;
+        else if (part == L"ESC" || part == L"ESCAPE") vk = VK_ESCAPE;
+        else return false;
+    }
+
+    return modifiers != 0 && vk != 0;
+}
 }
 
 ChatPanel::ChatPanel()
@@ -89,6 +142,7 @@ ChatPanel::~ChatPanel()
 bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime)
 {
     instance_ = instance;
+    uiThreadId_ = GetCurrentThreadId();
 
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
@@ -113,6 +167,7 @@ bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime)
     if (!hwnd_) return false;
 
     SetLayeredWindowAttributes(hwnd_, 0, 250, LWA_ALPHA);
+    SetOverlayHotkey(runtime.overlayHotkey);
 
     ShowWindow(hwnd_, SW_SHOW);
     UpdateWindow(hwnd_);
@@ -150,6 +205,8 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
     topBand_ = fontSize_ + 34;
     statusBand_ = fontSize_ + 18;
 
+    SetOverlayHotkey(runtime.overlayHotkey);
+
     if (hwnd_) {
         ScrollToEnd();
         InvalidateRect(hwnd_, nullptr, FALSE);
@@ -159,6 +216,10 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
 void ChatPanel::Close()
 {
     if (hwnd_) {
+        if (hotkeyRegistered_) {
+            UnregisterHotKey(hwnd_, hotkeyId_);
+            hotkeyRegistered_ = false;
+        }
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
     }
@@ -175,6 +236,33 @@ void ChatPanel::MessageLoop()
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+}
+
+bool ChatPanel::SetOverlayHotkey(const std::wstring& hotkey)
+{
+    std::wstring value = text::Trim(hotkey.empty() ? L"Ctrl+Shift+T" : hotkey);
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        overlayHotkey_ = value;
+    }
+    if (!hwnd_) return false;
+
+    if (uiThreadId_ != 0 && GetCurrentThreadId() != uiThreadId_) {
+        PostMessageW(hwnd_, WM_APP + 4, 0, 0);
+        return true;
+    }
+
+    if (hotkeyRegistered_) {
+        UnregisterHotKey(hwnd_, hotkeyId_);
+        hotkeyRegistered_ = false;
+    }
+
+    UINT modifiers = 0;
+    UINT vk = 0;
+    if (!ParseHotkey(value, modifiers, vk)) return false;
+
+    hotkeyRegistered_ = RegisterHotKey(hwnd_, hotkeyId_, modifiers | MOD_NOREPEAT, vk) != FALSE;
+    return hotkeyRegistered_;
 }
 
 unsigned int ChatPanel::Push(ChatEntry entry)
@@ -211,6 +299,20 @@ void ChatPanel::Status(const std::wstring& text)
         status_ = text;
     }
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void ChatPanel::ToggleVisible()
+{
+    if (!hwnd_) return;
+    if (IsWindowVisible(hwnd_)) {
+        ShowWindow(hwnd_, SW_HIDE);
+        return;
+    }
+
+    ShowWindow(hwnd_, SW_SHOWNA);
+    SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -272,6 +374,9 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     case WM_MOUSEWHEEL:
         self->OnWheel(GET_WHEEL_DELTA_WPARAM(wp));
         return 0;
+    case WM_HOTKEY:
+        if ((int)wp == self->hotkeyId_) self->ToggleVisible();
+        return 0;
     case WM_LBUTTONDOWN:
         self->OnClick(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
@@ -281,6 +386,15 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
     case WM_APP + 3:
         self->DrainPending();
         return 0;
+    case WM_APP + 4: {
+        std::wstring hotkey;
+        {
+            std::lock_guard<std::mutex> guard(self->lock_);
+            hotkey = self->overlayHotkey_;
+        }
+        self->SetOverlayHotkey(hotkey);
+        return 0;
+    }
     case WM_ERASEBKGND:
         return 1;
     case WM_CLOSE:
@@ -288,6 +402,10 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:
+        if (self->hotkeyRegistered_) {
+            UnregisterHotKey(hwnd, self->hotkeyId_);
+            self->hotkeyRegistered_ = false;
+        }
         self->hwnd_ = nullptr;
         if (self->closing_) PostQuitMessage(0);
         return 0;

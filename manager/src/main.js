@@ -6,6 +6,43 @@ const childProcess = require('child_process');
 const DLL_NAME = 'ets2_chat_translator.dll';
 const CONFIG_NAME = 'ets2_chat_translator_config.json';
 
+const GAMES = {
+  ets2: {
+    shortName: 'ETS2',
+    name: 'Euro Truck Simulator 2',
+    exe: 'eurotrucks2.exe',
+    registryKeys: [
+      'SOFTWARE\\SCS Software\\Euro Truck Simulator 2',
+      'SOFTWARE\\WOW6432Node\\SCS Software\\Euro Truck Simulator 2'
+    ],
+    guesses: [
+      'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Euro Truck Simulator 2',
+      'D:\\Steam\\steamapps\\common\\Euro Truck Simulator 2',
+      'D:\\SteamLibrary\\steamapps\\common\\Euro Truck Simulator 2',
+      'E:\\SteamLibrary\\steamapps\\common\\Euro Truck Simulator 2'
+    ]
+  },
+  ats: {
+    shortName: 'ATS',
+    name: 'American Truck Simulator',
+    exe: 'amtrucks.exe',
+    registryKeys: [
+      'SOFTWARE\\SCS Software\\American Truck Simulator',
+      'SOFTWARE\\WOW6432Node\\SCS Software\\American Truck Simulator'
+    ],
+    guesses: [
+      'C:\\Program Files (x86)\\Steam\\steamapps\\common\\American Truck Simulator',
+      'D:\\Steam\\steamapps\\common\\American Truck Simulator',
+      'D:\\SteamLibrary\\steamapps\\common\\American Truck Simulator',
+      'E:\\SteamLibrary\\steamapps\\common\\American Truck Simulator'
+    ]
+  }
+};
+
+function gameDef(game) {
+  return GAMES[game] || GAMES.ets2;
+}
+
 let mainWindow;
 
 function createWindow() {
@@ -60,10 +97,10 @@ function configPath(ets2Path) {
   return path.join(pluginDir(ets2Path), CONFIG_NAME);
 }
 
-function looksLikeEts2(ets2Path) {
-  if (!ets2Path || !fs.existsSync(ets2Path)) return false;
-  return fs.existsSync(path.join(ets2Path, 'bin', 'win_x64')) ||
-    fs.existsSync(path.join(ets2Path, 'bin', 'win_x64', 'eurotrucks2.exe'));
+function looksLikeGame(gamePath, game) {
+  if (!gamePath || !fs.existsSync(gamePath)) return false;
+  const def = gameDef(game);
+  return fs.existsSync(path.join(gamePath, 'bin', 'win_x64', def.exe));
 }
 
 function queryRegistryInstallDir(key) {
@@ -81,24 +118,22 @@ function queryRegistryInstallDir(key) {
   }
 }
 
-function detectEts2Path() {
+function detectGamePath(game) {
+  const def = gameDef(game);
   const candidates = [
-    queryRegistryInstallDir('SOFTWARE\\SCS Software\\Euro Truck Simulator 2'),
-    queryRegistryInstallDir('SOFTWARE\\WOW6432Node\\SCS Software\\Euro Truck Simulator 2'),
-    'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Euro Truck Simulator 2',
-    'D:\\Steam\\steamapps\\common\\Euro Truck Simulator 2',
-    'D:\\SteamLibrary\\steamapps\\common\\Euro Truck Simulator 2',
-    'E:\\SteamLibrary\\steamapps\\common\\Euro Truck Simulator 2'
+    ...def.registryKeys.map(queryRegistryInstallDir),
+    ...def.guesses
   ];
 
   return candidates.find((item) => item && fs.existsSync(item)) || '';
 }
 
-function installState(ets2Path) {
-  if (!looksLikeEts2(ets2Path)) {
+function installState(game, ets2Path) {
+  const def = gameDef(game);
+  if (!looksLikeGame(ets2Path, game)) {
     return {
       ok: false,
-      text: 'ETS2 路径未设置或不像有效安装目录',
+      text: `${def.shortName} 路径未设置或不像有效安装目录`,
       pluginDir: ''
     };
   }
@@ -110,48 +145,51 @@ function installState(ets2Path) {
     dllInstalled,
     configExists,
     pluginDir: pluginDir(ets2Path),
-    text: `${dllInstalled ? 'DLL 已安装' : 'DLL 未安装'}，${configExists ? '配置存在' : '配置不存在'}`
+    text: `${def.shortName}: ${dllInstalled ? 'DLL 已安装' : 'DLL 未安装'}，${configExists ? '配置存在' : '配置不存在'}`
   };
 }
 
-ipcMain.handle('detect-path', () => detectEts2Path());
+ipcMain.handle('detect-path', (_event, game) => detectGamePath(game));
 
-ipcMain.handle('browse-path', async () => {
+ipcMain.handle('browse-path', async (_event, game) => {
+  const def = gameDef(game);
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: '选择 Euro Truck Simulator 2 安装目录',
+    title: `选择 ${def.name} 安装目录`,
     properties: ['openDirectory']
   });
   return result.canceled ? '' : result.filePaths[0];
 });
 
-ipcMain.handle('state', (_event, ets2Path) => installState(ets2Path));
+ipcMain.handle('state', (_event, game, ets2Path) => installState(game, ets2Path));
 
-ipcMain.handle('install-dll', (_event, ets2Path) => {
-  if (!looksLikeEts2(ets2Path)) throw new Error('请先选择有效的 ETS2 安装目录');
+ipcMain.handle('install-dll', (_event, game, ets2Path) => {
+  const def = gameDef(game);
+  if (!looksLikeGame(ets2Path, game)) throw new Error(`请先选择有效的 ${def.shortName} 安装目录`);
   const src = sourceDllPath();
   if (!fs.existsSync(src)) throw new Error(`未找到 ${DLL_NAME}，请先运行 build.bat`);
   fs.mkdirSync(pluginDir(ets2Path), { recursive: true });
   fs.copyFileSync(src, installedDllPath(ets2Path));
-  return installState(ets2Path);
+  return installState(game, ets2Path);
 });
 
-ipcMain.handle('uninstall-dll', (_event, ets2Path) => {
+ipcMain.handle('uninstall-dll', (_event, game, ets2Path) => {
   const dll = installedDllPath(ets2Path);
   if (fs.existsSync(dll)) fs.unlinkSync(dll);
-  return installState(ets2Path);
+  return installState(game, ets2Path);
 });
 
-ipcMain.handle('read-config', (_event, ets2Path) => {
+ipcMain.handle('read-config', (_event, _game, ets2Path) => {
   const file = configPath(ets2Path);
   if (!fs.existsSync(file)) return null;
   return fs.readFileSync(file, 'utf8');
 });
 
-ipcMain.handle('write-config', (_event, ets2Path, jsonText) => {
-  if (!looksLikeEts2(ets2Path)) throw new Error('请先选择有效的 ETS2 安装目录');
+ipcMain.handle('write-config', (_event, game, ets2Path, jsonText) => {
+  const def = gameDef(game);
+  if (!looksLikeGame(ets2Path, game)) throw new Error(`请先选择有效的 ${def.shortName} 安装目录`);
   const file = configPath(ets2Path);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   JSON.parse(jsonText);
   fs.writeFileSync(file, jsonText, 'utf8');
-  return installState(ets2Path);
+  return installState(game, ets2Path);
 });

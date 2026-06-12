@@ -1,13 +1,21 @@
 #include <windows.h>
 #include <memory>
+#include <string>
 
 #include "../include/scs_telemetry.h"
 #include "app_runtime.h"
+#include "text_codec.h"
 
 // ======================== Globals ========================
 static HINSTANCE g_hInstance = NULL;
 static std::unique_ptr<AppRuntime> g_app;
 static scs_log_t g_gameLog = nullptr;
+
+static std::wstring WidenUtf8(const char* value)
+{
+    if (!value) return L"";
+    return text::FromUtf8(value);
+}
 
 // ======================== SCS Telemetry SDK Exports ========================
 
@@ -26,12 +34,16 @@ extern "C" __declspec(dllexport) SCSAPI_RESULT scs_telemetry_init(
 
     if (g_gameLog) {
         g_gameLog(SCS_LOG_TYPE_message, "[ChatTranslator] ===================================");
-        g_gameLog(SCS_LOG_TYPE_message, "[ChatTranslator] ETS2 TruckersMP Chat Translator rewrite-20260611");
+        g_gameLog(SCS_LOG_TYPE_message, "[ChatTranslator] ETS2/ATS TruckersMP Chat Translator rewrite-20260612");
         g_gameLog(SCS_LOG_TYPE_message, "[ChatTranslator] Initializing...");
     }
 
     if (!g_app) {
-        g_app = std::make_unique<AppRuntime>(g_hInstance, g_gameLog);
+        g_app = std::make_unique<AppRuntime>(
+            g_hInstance,
+            g_gameLog,
+            WidenUtf8(tp->common.game_id),
+            WidenUtf8(tp->common.game_name));
         g_app->Start();
     }
 

@@ -7,8 +7,10 @@ const els = {
   browseBtn: document.querySelector('#browseBtn'),
   installBtn: document.querySelector('#installBtn'),
   uninstallBtn: document.querySelector('#uninstallBtn'),
+  gamePathLabel: document.querySelector('#gamePathLabel'),
   preset: document.querySelector('#preset'),
   targetLang: document.querySelector('#targetLang'),
+  overlayHotkey: document.querySelector('#overlayHotkey'),
   workers: document.querySelector('#workers'),
   queueLimit: document.querySelector('#queueLimit'),
   cacheLimit: document.querySelector('#cacheLimit'),
@@ -29,6 +31,12 @@ const els = {
   previewBtn: document.querySelector('#previewBtn'),
   saveConfigBtn: document.querySelector('#saveConfigBtn'),
   preview: document.querySelector('#preview')
+};
+
+let currentGame = 'ets2';
+const GAME_LABELS = {
+  ets2: 'ETS2',
+  ats: 'ATS'
 };
 
 function numberValue(input, fallback) {
@@ -107,6 +115,28 @@ const PROVIDER_PRESETS = {
     needsApiKey: true,
     needsSecret: true
   },
+  'aliyun': {
+    kind: 'aliyun',
+    label: '阿里云机器翻译',
+    baseUrl: 'https://mt.cn-hangzhou.aliyuncs.com',
+    model: 'general',
+    needsModel: true,
+    modelLabel: 'Scene',
+    needsApiKey: true,
+    needsSecret: true,
+    secretLabel: 'AccessKey Secret'
+  },
+  'volcengine': {
+    kind: 'volcengine',
+    label: '火山翻译',
+    baseUrl: 'https://translate.volcengineapi.com',
+    model: 'cn-north-1',
+    needsModel: true,
+    modelLabel: 'Region',
+    needsApiKey: true,
+    needsSecret: true,
+    secretLabel: 'Secret Access Key'
+  },
   'libretranslate': {
     kind: 'libretranslate',
     label: 'LibreTranslate',
@@ -136,6 +166,7 @@ function baseConfig() {
   const target = els.targetLang.value.trim() || 'zh-CN';
   return {
     target_lang: target,
+    overlay_hotkey: els.overlayHotkey.value.trim() || 'Ctrl+Shift+T',
     workers: Math.max(1, Math.min(32, numberValue(els.workers, 8))),
     queue_limit: Math.max(50, numberValue(els.queueLimit, 1000)),
     cache_limit: Math.max(100, numberValue(els.cacheLimit, 1500)),
@@ -197,20 +228,21 @@ function applyPresetDefaults(force = false) {
 }
 
 async function refreshState() {
-  const state = await window.managerApi.state(els.ets2Path.value.trim());
+  const state = await window.managerApi.state(currentGame, els.ets2Path.value.trim());
   els.installState.textContent = state.text;
   els.pluginDir.textContent = state.pluginDir ? `插件目录：${state.pluginDir}` : '';
 }
 
 async function loadInstalledConfig(silent = false) {
   try {
-    const text = await window.managerApi.readConfig(els.ets2Path.value.trim());
+    const text = await window.managerApi.readConfig(currentGame, els.ets2Path.value.trim());
     if (!text) {
       if (!silent) setStatus('插件目录里还没有配置文件');
       return;
     }
     const config = JSON.parse(text);
     els.targetLang.value = config.target_lang || 'zh-CN';
+    els.overlayHotkey.value = config.overlay_hotkey || 'Ctrl+Shift+T';
     els.workers.value = config.workers ?? 8;
     els.queueLimit.value = config.queue_limit ?? 1000;
     els.cacheLimit.value = config.cache_limit ?? 1500;
@@ -229,6 +261,8 @@ async function loadInstalledConfig(silent = false) {
       else if (kind === 'baidu') els.preset.value = 'baidu';
       else if (kind === 'youdao') els.preset.value = 'youdao';
       else if (kind === 'tencent' || kind === 'tencent_cloud' || kind === 'tencent_tmt') els.preset.value = 'tencent';
+      else if (kind === 'aliyun' || kind === 'alibaba' || kind === 'alibaba_cloud' || kind === 'alimt') els.preset.value = 'aliyun';
+      else if (kind === 'volcengine' || kind === 'volc' || kind === 'volc_translate' || kind === 'huoshan') els.preset.value = 'volcengine';
       else if (kind === 'libretranslate') els.preset.value = 'libretranslate';
       else els.preset.value = 'openai';
       els.providerLabel.value = primary.label || (PROVIDER_PRESETS[els.preset.value] || PROVIDER_PRESETS.openai).label;
@@ -250,14 +284,14 @@ async function loadInstalledConfig(silent = false) {
 }
 
 els.detectBtn.addEventListener('click', async () => {
-  els.ets2Path.value = await window.managerApi.detectPath();
-  setStatus(els.ets2Path.value ? '已自动识别 ETS2 路径' : '未能自动识别，请手动选择');
+  els.ets2Path.value = await window.managerApi.detectPath(currentGame);
+  setStatus(els.ets2Path.value ? `已自动识别 ${GAME_LABELS[currentGame]} 路径` : '未能自动识别，请手动选择');
   await refreshState();
   await loadInstalledConfig(true);
 });
 
 els.browseBtn.addEventListener('click', async () => {
-  const selected = await window.managerApi.browsePath();
+  const selected = await window.managerApi.browsePath(currentGame);
   if (selected) {
     els.ets2Path.value = selected;
     await refreshState();
@@ -267,7 +301,7 @@ els.browseBtn.addEventListener('click', async () => {
 
 els.installBtn.addEventListener('click', async () => {
   try {
-    await window.managerApi.installDll(els.ets2Path.value.trim());
+    await window.managerApi.installDll(currentGame, els.ets2Path.value.trim());
     setStatus('DLL 已安装/更新');
     await refreshState();
   } catch (error) {
@@ -277,7 +311,7 @@ els.installBtn.addEventListener('click', async () => {
 
 els.uninstallBtn.addEventListener('click', async () => {
   try {
-    await window.managerApi.uninstallDll(els.ets2Path.value.trim());
+    await window.managerApi.uninstallDll(currentGame, els.ets2Path.value.trim());
     setStatus('DLL 已卸载，配置已保留');
     await refreshState();
   } catch (error) {
@@ -291,7 +325,7 @@ els.previewBtn.addEventListener('click', updatePreview);
 els.saveConfigBtn.addEventListener('click', async () => {
   try {
     JSON.parse(els.preview.value);
-    await window.managerApi.writeConfig(els.ets2Path.value.trim(), els.preview.value);
+    await window.managerApi.writeConfig(currentGame, els.ets2Path.value.trim(), els.preview.value);
     setStatus('翻译配置已保存');
     await refreshState();
   } catch (error) {
@@ -302,6 +336,7 @@ els.saveConfigBtn.addEventListener('click', async () => {
 for (const input of [
   els.preset,
   els.targetLang,
+  els.overlayHotkey,
   els.workers,
   els.queueLimit,
   els.cacheLimit,
@@ -320,6 +355,20 @@ for (const input of [
 }
 
 els.preset.addEventListener('change', () => applyPresetDefaults(true));
+
+document.querySelectorAll('.game-tab').forEach((tab) => {
+  tab.addEventListener('click', async () => {
+    currentGame = tab.dataset.game || 'ets2';
+    document.querySelectorAll('.game-tab').forEach((item) => {
+      item.classList.toggle('active', item === tab);
+    });
+    els.gamePathLabel.textContent = `${GAME_LABELS[currentGame]} 安装目录`;
+    els.ets2Path.value = await window.managerApi.detectPath(currentGame);
+    setStatus(els.ets2Path.value ? `已切换到 ${GAME_LABELS[currentGame]}` : `${GAME_LABELS[currentGame]} 路径未设置`);
+    await refreshState();
+    await loadInstalledConfig(true);
+  });
+});
 
 // --- 字体大小控件 ---
 function setFontSize(size) {
@@ -348,7 +397,7 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
 });
 
 (async function init() {
-  els.ets2Path.value = await window.managerApi.detectPath();
+  els.ets2Path.value = await window.managerApi.detectPath(currentGame);
   setFontSize(numberValue(els.fontSize, 18));
   applyPresetDefaults(true);
   await refreshState();
