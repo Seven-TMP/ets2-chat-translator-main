@@ -214,46 +214,42 @@ h2 {
 }
 
 .install-panel {
-  display: grid;
-  grid-template-columns: minmax(210px, 260px) minmax(420px, 1fr) auto;
-  grid-template-areas:
-    "install-title install-path install-actions"
-    "install-game install-hint install-actions";
-  gap: 10px 16px;
-  align-items: center;
+  display: block;
 }
 
 .install-panel .section-title {
-  grid-area: install-title;
-  margin-bottom: 0;
-  padding-bottom: 0;
-  border-bottom: 0;
+  margin-bottom: 14px;
+}
+
+.install-layout {
   display: grid;
-  gap: 8px;
-  justify-content: start;
-  align-content: center;
+  grid-template-columns: 280px minmax(420px, 1fr) minmax(260px, auto);
+  gap: 18px;
+  align-items: end;
 }
 
-.install-panel .game-switch {
-  grid-area: install-game;
+.install-game {
+  min-width: 0;
+}
+
+.install-layout .game-switch {
+  width: 100%;
   margin-bottom: 0;
-  align-self: start;
 }
 
-.install-panel .path-row {
-  grid-area: install-path;
+.install-layout .game-tab {
+  flex: 1;
 }
 
 .install-panel .main-actions {
-  grid-area: install-actions;
   margin-top: 0;
   justify-content: flex-end;
   white-space: nowrap;
+  align-self: end;
 }
 
 .install-panel .hint {
-  grid-area: install-hint;
-  margin-top: 0;
+  margin-top: 10px;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -669,7 +665,7 @@ textarea:focus {
     width: min(100% - 28px, 980px);
     margin: 18px auto;
   }
-  .install-panel,
+  .install-layout,
   .basic-grid,
   .tuning-grid,
   .llm-fields {
@@ -689,6 +685,9 @@ textarea:focus {
   .actions {
     flex-wrap: wrap;
   }
+  .install-panel .main-actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (min-width: 1001px) and (max-width: 1350px) {
@@ -704,8 +703,8 @@ textarea:focus {
   .llm-fields {
     grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
-  .install-panel {
-    grid-template-columns: minmax(160px, 220px) minmax(360px, 1fr);
+  .install-layout {
+    grid-template-columns: 220px minmax(360px, 1fr);
   }
   .install-panel .main-actions {
     grid-column: 1 / -1;

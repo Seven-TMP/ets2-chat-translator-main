@@ -31,25 +31,31 @@
           </div>
           <span id="installState" class="status-badge">正在检查...</span>
         </div>
-        <div class="game-switch">
-          <button type="button" class="game-tab active" data-game="ets2">ETS2</button>
-          <button type="button" class="game-tab" data-game="ats">ATS</button>
-        </div>
-        <div class="path-row">
-          <label id="gamePathLabel" for="ets2Path">ETS2 安装目录</label>
-          <div class="input-group">
-            <input id="ets2Path" type="text" spellcheck="false" placeholder="等待识别..." />
-            <div class="btn-group">
-              <button id="detectBtn" class="secondary-btn">自动识别</button>
-              <button id="browseBtn" class="secondary-btn">浏览</button>
+        <div class="install-layout">
+          <div class="install-game">
+            <div class="game-switch">
+              <button type="button" class="game-tab active" data-game="ets2">ETS2</button>
+              <button type="button" class="game-tab" data-game="ats">ATS</button>
             </div>
           </div>
+          <div class="install-main">
+            <div class="path-row">
+              <label id="gamePathLabel" for="ets2Path">ETS2 安装目录</label>
+              <div class="input-group">
+                <input id="ets2Path" type="text" spellcheck="false" placeholder="等待识别..." />
+                <div class="btn-group">
+                  <button id="detectBtn" class="secondary-btn">自动识别</button>
+                  <button id="browseBtn" class="secondary-btn">浏览</button>
+                </div>
+              </div>
+            </div>
+            <div id="pluginDir" class="hint"></div>
+          </div>
+          <div class="actions main-actions">
+            <button id="installBtn" class="primary-btn pulse-hover">安装 / 更新 DLL</button>
+            <button id="uninstallBtn" class="danger-btn">卸载 DLL</button>
+          </div>
         </div>
-        <div class="actions main-actions">
-          <button id="installBtn" class="primary-btn pulse-hover">安装 / 更新 DLL</button>
-          <button id="uninstallBtn" class="danger-btn">卸载 DLL</button>
-        </div>
-        <div id="pluginDir" class="hint"></div>
       </section>
 
       <section class="workspace-grid">
