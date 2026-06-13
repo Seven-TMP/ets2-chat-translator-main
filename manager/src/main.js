@@ -18,6 +18,8 @@ const GAMES = {
     shortName: 'ETS2',
     name: 'Euro Truck Simulator 2',
     exe: 'eurotrucks2.exe',
+    steamAppId: '227300',
+    steamFolderName: 'Euro Truck Simulator 2',
     registryKeys: [
       'SOFTWARE\\SCS Software\\Euro Truck Simulator 2',
       'SOFTWARE\\WOW6432Node\\SCS Software\\Euro Truck Simulator 2'
@@ -33,6 +35,8 @@ const GAMES = {
     shortName: 'ATS',
     name: 'American Truck Simulator',
     exe: 'amtrucks.exe',
+    steamAppId: '270880',
+    steamFolderName: 'American Truck Simulator',
     registryKeys: [
       'SOFTWARE\\SCS Software\\American Truck Simulator',
       'SOFTWARE\\WOW6432Node\\SCS Software\\American Truck Simulator'
@@ -637,13 +641,28 @@ function looksLikeGame(gamePath, game) {
   return fs.existsSync(path.join(gamePath, 'bin', 'win_x64', def.exe));
 }
 
-function queryRegistryInstallDir(key) {
+function uniqueExistingDirs(items) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    if (!item) continue;
+    const normalized = path.normalize(String(item).replace(/^"|"$/g, '').trim());
+    const key = normalized.toLowerCase();
+    if (seen.has(key) || !fs.existsSync(normalized)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function queryRegistryValue(fullKey, valueName) {
   try {
-    const output = childProcess.execFileSync('reg', ['query', `HKLM\\${key}`, '/v', 'InstallDir'], {
+    const output = childProcess.execFileSync('reg', ['query', fullKey, '/v', valueName], {
       encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true
     });
-    const line = output.split(/\r?\n/).find((item) => item.includes('InstallDir'));
+    const line = output.split(/\r?\n/).find((item) => item.includes(valueName));
     if (!line) return '';
     const parts = line.trim().split(/\s{2,}/);
     return parts[parts.length - 1] || '';
@@ -652,14 +671,136 @@ function queryRegistryInstallDir(key) {
   }
 }
 
+function queryRegistryInstallDir(key) {
+  return queryRegistryValue(`HKLM\\${key}`, 'InstallDir') || queryRegistryValue(`HKCU\\${key}`, 'InstallDir');
+}
+
+function queryRegistryInstallLocation(fullKey) {
+  return queryRegistryValue(fullKey, 'InstallLocation') ||
+    queryRegistryValue(fullKey, 'InstallDir') ||
+    queryRegistryValue(fullKey, 'Path');
+}
+
+function commonDriveRoots(folderName) {
+  const roots = [];
+  for (let code = 67; code <= 90; ++code) {
+    roots.push(`${String.fromCharCode(code)}:\\${folderName}`);
+  }
+  return roots;
+}
+
+function steamRootCandidates() {
+  const registryRoots = [
+    'HKCU\\SOFTWARE\\Valve\\Steam',
+    'HKLM\\SOFTWARE\\Valve\\Steam',
+    'HKLM\\SOFTWARE\\WOW6432Node\\Valve\\Steam'
+  ].flatMap((key) => [
+    queryRegistryValue(key, 'InstallPath'),
+    queryRegistryValue(key, 'SteamPath')
+  ]);
+
+  const envRoots = [
+    process.env.ProgramFiles && path.join(process.env.ProgramFiles, 'Steam'),
+    process.env['ProgramFiles(x86)'] && path.join(process.env['ProgramFiles(x86)'], 'Steam'),
+    process.env.ProgramW6432 && path.join(process.env.ProgramW6432, 'Steam')
+  ];
+
+  return uniqueExistingDirs([
+    ...registryRoots,
+    ...envRoots,
+    ...commonDriveRoots('Steam')
+  ]);
+}
+
+function unescapeVdfPath(value) {
+  return String(value || '').replace(/\\\\/g, '\\').replace(/\\"/g, '"');
+}
+
+function vdfValue(text, key) {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`"${escaped}"\\s+"([^"]*)"`, 'i').exec(text || '');
+  return match ? unescapeVdfPath(match[1]) : '';
+}
+
+function steamLibraryFolders(steamRoot) {
+  const folders = [steamRoot];
+  const files = [
+    path.join(steamRoot, 'steamapps', 'libraryfolders.vdf'),
+    path.join(steamRoot, 'config', 'libraryfolders.vdf')
+  ].filter((file) => fs.existsSync(file));
+
+  for (const file of files) {
+    try {
+      const text = fs.readFileSync(file, 'utf8');
+      for (const match of text.matchAll(/"path"\s+"([^"]+)"/gi)) {
+        folders.push(unescapeVdfPath(match[1]));
+      }
+
+      // Older Steam clients stored numbered library entries as "1" "D:\\SteamLibrary".
+      for (const match of text.matchAll(/"\d+"\s+"([^"]+)"/g)) {
+        const value = unescapeVdfPath(match[1]);
+        if (/^[A-Za-z]:\\/.test(value) || /^\\\\/.test(value)) folders.push(value);
+      }
+    } catch {
+      // Keep scanning the other libraryfolders.vdf locations.
+    }
+  }
+
+  return uniqueExistingDirs([
+    ...folders,
+    ...commonDriveRoots('SteamLibrary')
+  ]);
+}
+
+function steamGamePathFromLibrary(libraryPath, def) {
+  const steamapps = path.join(libraryPath, 'steamapps');
+  const manifest = path.join(steamapps, `appmanifest_${def.steamAppId}.acf`);
+  if (fs.existsSync(manifest)) {
+    try {
+      const text = fs.readFileSync(manifest, 'utf8');
+      const installDir = vdfValue(text, 'installdir');
+      if (installDir) return path.join(steamapps, 'common', installDir);
+    } catch {
+      // Keep the folder-name fallback below.
+    }
+  }
+  return path.join(steamapps, 'common', def.steamFolderName);
+}
+
+function steamGameCandidates(def) {
+  const libraries = uniqueExistingDirs([
+    ...steamRootCandidates().flatMap(steamLibraryFolders),
+    ...commonDriveRoots('SteamLibrary')
+  ]);
+  return libraries.map((library) => steamGamePathFromLibrary(library, def));
+}
+
+function gameRegistryCandidates(def) {
+  const uninstallKeys = [
+    `HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App ${def.steamAppId}`,
+    `HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App ${def.steamAppId}`,
+    `HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App ${def.steamAppId}`
+  ];
+
+  return [
+    ...def.registryKeys.flatMap((key) => [
+      queryRegistryInstallDir(key),
+      queryRegistryInstallLocation(`HKLM\\${key}`),
+      queryRegistryInstallLocation(`HKCU\\${key}`)
+    ]),
+    ...uninstallKeys.map(queryRegistryInstallLocation)
+  ];
+}
+
 function detectGamePath(game) {
   const def = gameDef(game);
   const candidates = [
-    ...def.registryKeys.map(queryRegistryInstallDir),
+    ...gameRegistryCandidates(def),
+    ...steamGameCandidates(def),
     ...def.guesses
   ];
 
-  return candidates.find((item) => item && fs.existsSync(item)) || '';
+  return uniqueExistingDirs(candidates).find((item) => looksLikeGame(item, game)) || '';
 }
 
 function installState(game, ets2Path) {
