@@ -212,7 +212,15 @@ ETS2 / ATS / TruckersMP 聊天翻译插件。DLL 以 **SCS Telemetry** 插件形
 
 ## 🛠️ 构建项目
 
-本项目需要 Windows x64、Visual Studio 2019/2022 Build Tools、Node.js / npm 环境。
+本项目需要 Windows x64、Visual Studio C++ Build Tools、Node.js / npm 环境。
+
+必须安装：
+- **Visual Studio 2022 Build Tools** 或完整 Visual Studio。
+- 工作负载选择 **Desktop development with C++**。
+- 组件里需要 **MSVC v143 x64/x86 build tools** 和 **Windows 10/11 SDK**。
+- **Node.js LTS**，安装后确保命令行里能运行 `node -v` 和 `npm -v`。
+
+`build.bat` 会优先使用 Microsoft 官方 `vswhere` 自动查找 Visual Studio；如果没有安装 C++ 构建工具，会直接提示缺少依赖。
 
 ```bat
 # 运行构建脚本
