@@ -374,21 +374,28 @@ async function testAnthropic(provider, runtime) {
 async function testOpenAI(provider, runtime) {
   const miss = missing(provider, ['model']);
   if (miss) throw new Error(miss);
-  const body = JSON.stringify({
+  const bodyObject = {
     model: provider.model,
     temperature: 0,
     messages: [
       { role: 'system', content: `Translate chat into ${runtime.target}. Output only the translation.` },
       { role: 'user', content: runtime.sampleText }
     ]
-  });
+  };
+  if (String(provider.kind || '').toLowerCase() === 'deepseek') {
+    bodyObject.thinking = { type: 'disabled' };
+  }
+  const body = JSON.stringify(bodyObject);
   const headers = {
     'Content-Type': 'application/json',
     Accept: 'application/json'
   };
   if (provider.api_key) headers.Authorization = `Bearer ${provider.api_key}`;
+  const fallbackBaseUrl = String(provider.kind || '').toLowerCase() === 'deepseek'
+    ? 'https://api.deepseek.com'
+    : 'https://api.openai.com/v1';
   return finishProviderTest(provider, runtime, () => requestText('POST',
-    joinProviderUrl(provider.base_url, 'https://api.openai.com/v1', '/chat/completions'),
+    joinProviderUrl(provider.base_url, fallbackBaseUrl, '/chat/completions'),
     headers,
     body,
     runtime.timeoutMs));
@@ -634,7 +641,8 @@ async function testProvider(provider, runtime) {
   const kind = String(provider.kind || '').toLowerCase();
   try {
     if (kind === 'anthropic' || kind === 'claude' || kind === 'anthropic_messages') return await testAnthropic(provider, runtime);
-    if (kind === 'openai_compatible' || kind === 'openai' || kind === 'chat_completions') return await testOpenAI(provider, runtime);
+    if (kind === 'deepseek' || kind === 'deepseek_chat' || kind === 'deepseek_compatible' ||
+        kind === 'openai_compatible' || kind === 'openai' || kind === 'chat_completions') return await testOpenAI(provider, runtime);
     if (kind === 'mymemory') return await testMyMemory(provider, runtime);
     if (kind === 'andeer') return await testAndeer(provider, runtime);
     if (kind === 'deepl') return await testDeepL(provider, runtime);

@@ -72,6 +72,14 @@ const PROVIDER_PRESETS = {
     needsModel: true,
     needsApiKey: true
   },
+  'deepseek': {
+    kind: 'deepseek',
+    label: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-v4-flash',
+    needsModel: true,
+    needsApiKey: true
+  },
   'deepl': {
     kind: 'deepl',
     label: 'DeepL',
@@ -253,6 +261,7 @@ function primaryPresetValue(provider) {
   if (!provider) return 'free';
   const kind = provider.kind || '';
   if (kind === 'anthropic') return 'anthropic';
+  if (kind === 'deepseek' || kind === 'deepseek_chat' || kind === 'deepseek_compatible') return 'deepseek';
   if (kind === 'openai_compatible' || kind === 'openai') return 'openai';
   if (kind === 'deepl') return 'deepl';
   if (kind === 'google_cloud' || kind === 'google_translate') return 'google-cloud';

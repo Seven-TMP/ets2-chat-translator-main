@@ -1107,7 +1107,7 @@ public:
     using TranslateProvider::TranslateProvider;
     bool Ready() const override
     {
-        return !settings_.baseUrl.empty() && !settings_.model.empty();
+        return !settings_.model.empty() || IsDeepSeek();
     }
 
     std::wstring Translate(const std::wstring& input, const RuntimeConfig& runtime, HttpAgent& http, std::wstring& error) override
@@ -1115,10 +1115,16 @@ public:
         std::wstring host, prefix;
         INTERNET_PORT port = 443;
         bool tls = true;
-        if (!SplitUrl(settings_.baseUrl, host, port, prefix, tls)) {
+        std::wstring baseUrl = settings_.baseUrl.empty() && IsDeepSeek()
+            ? L"https://api.deepseek.com"
+            : settings_.baseUrl;
+        if (!SplitUrl(baseUrl, host, port, prefix, tls)) {
             error = L"bad base_url";
             return L"";
         }
+        std::wstring model = settings_.model.empty() && IsDeepSeek()
+            ? L"deepseek-v4-flash"
+            : settings_.model;
 
         std::wstring target = runtime.targetLanguage.empty() ? L"zh-CN" : runtime.targetLanguage;
         std::wstring prompt = L"You translate TruckersMP/ETS2 multiplayer chat into " + target +
@@ -1128,9 +1134,10 @@ public:
             L"Keep names, IDs, [tags], URLs and emoji unchanged. Never echo the original.";
 
         std::string body = "{";
-        body += "\"model\":\"" + text::EscapeJson(settings_.model) + "\",";
+        body += "\"model\":\"" + text::EscapeJson(model) + "\",";
         body += "\"temperature\":0,";
         body += "\"max_tokens\":" + std::to_string(MaxOutputTokensForChat(input)) + ",";
+        if (IsDeepSeek()) body += "\"thinking\":{\"type\":\"disabled\"},";
         body += "\"messages\":[";
         body += "{\"role\":\"system\",\"content\":\"" + text::EscapeJson(prompt) + "\"},";
         body += "{\"role\":\"user\",\"content\":\"" + text::EscapeJson(input) + "\"}";
@@ -1164,6 +1171,13 @@ public:
         });
         if (out.empty()) error = L"cannot parse response";
         return out;
+    }
+
+private:
+    bool IsDeepSeek() const
+    {
+        std::wstring kind = LowerAscii(settings_.kind);
+        return kind == L"deepseek" || kind == L"deepseek_chat" || kind == L"deepseek_compatible";
     }
 };
 
@@ -1766,7 +1780,8 @@ std::unique_ptr<TranslateProvider> MakeProvider(const ProviderSettings& p)
     if (kind == L"tencent" || kind == L"tencent_cloud" || kind == L"tencent_tmt") return std::make_unique<TencentTranslator>(p);
     if (kind == L"aliyun" || kind == L"alibaba" || kind == L"alibaba_cloud" || kind == L"alimt") return std::make_unique<AliyunTranslator>(p);
     if (kind == L"volcengine" || kind == L"volc" || kind == L"volc_translate" || kind == L"huoshan") return std::make_unique<VolcengineTranslator>(p);
-    if (kind == L"openai_compatible" || kind == L"openai" || kind == L"chat_completions") {
+    if (kind == L"deepseek" || kind == L"deepseek_chat" || kind == L"deepseek_compatible" ||
+        kind == L"openai_compatible" || kind == L"openai" || kind == L"chat_completions") {
         return std::make_unique<ChatCompletionsTranslator>(p);
     }
     return nullptr;
@@ -1832,12 +1847,16 @@ void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
         return;
     }
 
-    if (!running_) return;
+    if (!running_) {
+        LogLine(L"[Translate] \"" + value + L"\" -> skip: engine not running");
+        return;
+    }
 
     {
         std::lock_guard<std::mutex> g(cacheLock_);
         auto found = cache_.find(value);
         if (found != cache_.end()) {
+            LogLine(L"[Translate] \"" + value + L"\" -> cache: " + found->second);
             if (done_) done_(id, found->second);
             return;
         }
@@ -1848,16 +1867,19 @@ void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
         auto inFlight = inFlight_.find(value);
         if (inFlight != inFlight_.end()) {
             inFlight->second.push_back(id);
+            LogLine(L"[Translate] \"" + value + L"\" -> joined in-flight request");
             return;
         }
         if (jobs_.size() >= runtime_.queueLimit) {
             std::lock_guard<std::mutex> e(errorLock_);
             lastError_ = L"translation queue is full";
+            LogLine(L"[Translate] \"" + value + L"\" -> skip: queue full");
             return;
         }
         inFlight_[value].push_back(id);
         jobs_.push({ id, value });
     }
+    LogLine(L"[Translate] \"" + value + L"\" -> queued");
     jobsCv_.notify_one();
 }
 

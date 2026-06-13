@@ -153,6 +153,17 @@ R"({
       "api_secret": ""
     },
     {
+      "kind": "deepseek",
+      "label": "DeepSeek",
+      "enabled": false,
+      "base_url": "https://api.deepseek.com",
+      "api_key": "",
+      "model": "deepseek-v4-flash",
+      "source": "auto",
+      "target": "zh-CN",
+      "api_secret": ""
+    },
+    {
       "kind": "anthropic",
       "label": "Anthropic",
       "enabled": false,

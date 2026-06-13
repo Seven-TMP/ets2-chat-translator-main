@@ -120,9 +120,24 @@ void AppRuntime::AcceptChat(const ChatEntry& entry)
     if (!alive_ || !panel_) return;
     CheckConfigReload();
     unsigned int id = panel_->Push(entry);
-    if (translator_ && panel_->IsVisible() && !entry.serviceLine && TranslateEngine::ShouldTranslate(entry.body)) {
-        std::lock_guard<std::mutex> g(translatorLock_);
-        if (translator_) translator_->Submit(id, entry.body);
+    if (!panel_->IsVisible()) {
+        LogValue(L"[ChatTranslator] skip translation while overlay hidden: ", entry.body);
+        return;
+    }
+    if (entry.serviceLine) {
+        LogValue(L"[ChatTranslator] skip service line: ", entry.body);
+        return;
+    }
+    if (!TranslateEngine::ShouldTranslate(entry.body)) {
+        LogValue(L"[ChatTranslator] skip untranslated-needed check: ", entry.body);
+        return;
+    }
+    LogValue(L"[ChatTranslator] submit translation: ", entry.body);
+    std::lock_guard<std::mutex> g(translatorLock_);
+    if (translator_) {
+        translator_->Submit(id, entry.body);
+    } else {
+        Log("[ChatTranslator] skip translation: translator not ready");
     }
 }
 

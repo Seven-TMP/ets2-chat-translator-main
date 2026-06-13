@@ -45,7 +45,7 @@ ETS2 / ATS / TruckersMP 聊天翻译插件。DLL 以 **SCS Telemetry** 插件形
 
 1. **下载并运行安装包**：
    ```bash
-   build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.2.exe
+   build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.3.exe
    ```
 2. **打开管理器**：启动 `ETS2 Chat Translator Manager`。
 3. **定位游戏目录**：选择 ETS2 或 ATS，并自动识别或手动选择对应安装目录。
@@ -68,26 +68,52 @@ ETS2 / ATS / TruckersMP 聊天翻译插件。DLL 以 **SCS Telemetry** 插件形
 插件内置了极其强大的**语言检测分层处理**，确保针对 `source=auto` 能做出最准确的判断，不仅限于英语，完美适配 TruckersMP 的多语言环境（例如土耳其语、俄语、波兰语等）。以下是支持的各个平台介绍以及如何获取它们的 API Key 的详细教程。
 
 <details>
-<summary><b>🤖 OpenAI 协议 (支持各大兼容服务)</b></summary>
+<summary><b>🤖 DeepSeek</b></summary>
+
+**获取地址与教程：**
+- 前往 [DeepSeek 开放平台](https://platform.deepseek.com/) 注册并获取 API Key。
+- DeepSeek 是独立平台，不是 OpenAI；它提供 OpenAI 风格兼容接口。
+
+**配置说明 (`kind: deepseek`)**:
+- Base URL 默认填 `https://api.deepseek.com`。
+- 接口形式为 `POST {base_url}/chat/completions`。
+- 推荐模型：`deepseek-v4-flash`；也可按官方说明改成 `deepseek-v4-pro`。
+- 插件会为 DeepSeek 请求关闭 thinking，减少聊天翻译延迟。
+
+  ```json
+  {
+    "kind": "deepseek",
+    "label": "DeepSeek",
+    "enabled": true,
+    "base_url": "https://api.deepseek.com",
+    "api_key": "你的API_KEY",
+    "model": "deepseek-v4-flash",
+    "source": "auto",
+    "target": "zh-CN"
+  }
+  ```
+</details>
+
+<details>
+<summary><b>🤖 OpenAI 兼容协议 (支持各大兼容服务)</b></summary>
 
 **获取地址与教程：**
 - **OpenAI 官方**: 前往 [OpenAI Platform](https://platform.openai.com/api-keys) 注册并创建 API Key。
-- **DeepSeek (深度求索)**: 极具性价比的国产大模型。前往 [DeepSeek 开放平台](https://platform.deepseek.com/) 注册并获取 API Key。Base URL 填 `https://api.deepseek.com/v1`。
 - **硅基流动 (SiliconFlow)**: 提供各种开源大模型的高速 API。前往 [硅基流动控制台](https://cloud.siliconflow.cn/account/ak) 注册获取密钥。Base URL 填 `https://api.siliconflow.cn/v1`。
 - **本地化部署 (Ollama / LM Studio)**: 下载并运行本地客户端，Base URL 填 `http://localhost:11434/v1` (Ollama) 或 `http://localhost:1234/v1` (LM Studio)。API Key 可留空。
 
 **配置说明 (`kind: openai_compatible`)**:
 - 接口形式为 `POST {base_url}/chat/completions`。
-- `model` 需要填写服务商提供的具体模型名称，例如 `gpt-4o-mini` 或 `deepseek-chat`。
+- `model` 需要填写服务商提供的具体模型名称，例如 `gpt-4o-mini`。
 
   ```json
   {
     "kind": "openai_compatible",
-    "label": "DeepSeek",
+    "label": "OpenAI Compatible",
     "enabled": true,
-    "base_url": "https://api.deepseek.com/v1",
+    "base_url": "https://api.openai.com/v1",
     "api_key": "你的API_KEY",
-    "model": "deepseek-chat",
+    "model": "gpt-4o-mini",
     "source": "auto",
     "target": "zh-CN"
   }
@@ -198,7 +224,7 @@ build.bat --no-pause
 
 ```text
 build\ets2_chat_translator.dll                        # 核心 DLL
-build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.2.exe # 安装包
+build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.3.exe # 安装包
 build\ets2_chat_translator_app\ETS2 Chat Translator Manager.exe # 免安装管理器
 ```
 *注：安装包使用 NSIS 制作，DLL 会自动打包进管理器的 `resources` 目录。*
