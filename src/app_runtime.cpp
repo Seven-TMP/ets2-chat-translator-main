@@ -119,27 +119,40 @@ void AppRuntime::AcceptChat(const ChatEntry& entry)
 {
     if (!alive_ || !panel_) return;
     CheckConfigReload();
-    unsigned int id = panel_->Push(entry);
-    if (entry.infoLine) {
+
+    ChatEntry displayEntry = entry;
+    if (displayEntry.infoLine) {
+        panel_->Push(displayEntry);
         return;
     }
+
+    if (displayEntry.serviceLine) {
+        panel_->Push(displayEntry);
+        LogValue(L"[ChatTranslator] skip service line: ", displayEntry.body);
+        return;
+    }
+
     if (!panel_->IsVisible()) {
-        LogValue(L"[ChatTranslator] skip translation while overlay hidden: ", entry.body);
+        displayEntry.translated = displayEntry.body;
+        panel_->Push(displayEntry);
+        LogValue(L"[ChatTranslator] skip translation while overlay hidden: ", displayEntry.body);
         return;
     }
-    if (entry.serviceLine) {
-        LogValue(L"[ChatTranslator] skip service line: ", entry.body);
+
+    if (!TranslateEngine::ShouldTranslate(displayEntry.body)) {
+        displayEntry.translated = displayEntry.body;
+        panel_->Push(displayEntry);
+        LogValue(L"[ChatTranslator] skip non-translatable text: ", displayEntry.body);
         return;
     }
-    if (!TranslateEngine::ShouldTranslate(entry.body)) {
-        LogValue(L"[ChatTranslator] skip untranslated-needed check: ", entry.body);
-        return;
-    }
-    LogValue(L"[ChatTranslator] submit translation: ", entry.body);
+
+    unsigned int id = panel_->Push(displayEntry);
+    LogValue(L"[ChatTranslator] submit translation: ", displayEntry.body);
     std::lock_guard<std::mutex> g(translatorLock_);
-    if (translator_) {
-        translator_->Submit(id, entry.body);
+    if (translator_ && translator_->ProviderCount() > 0) {
+        translator_->Submit(id, displayEntry.body);
     } else {
+        panel_->PatchTranslation(id, displayEntry.body);
         Log("[ChatTranslator] skip translation: translator not ready");
     }
 }

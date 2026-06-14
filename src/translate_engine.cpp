@@ -11,6 +11,9 @@
 
 namespace
 {
+std::wstring ShortPhraseFallback(const std::wstring& input);
+std::wstring TrimChatEdgePunctuation(std::wstring value);
+
 bool SplitUrl(const std::wstring& url, std::wstring& host, INTERNET_PORT& port, std::wstring& prefix, bool& tls)
 {
     std::wstring u = url;
@@ -134,9 +137,34 @@ bool IsChatEdgePunctuation(wchar_t ch)
 {
     return ch == L'!' || ch == L'?' || ch == L'.' || ch == L',' || ch == L';' || ch == L':'
         || ch == L'~' || ch == L'-' || ch == L'_' || ch == L'\'' || ch == L'"'
+        || ch == L'/' || ch == L'\\' || ch == L'|' || ch == L'`'
         || ch == L'\x2026' || ch == L'\x2018' || ch == L'\x2019' || ch == L'\x201C' || ch == L'\x201D'
         || ch == L'\xFF01' || ch == L'\xFF1F' || ch == L'\x3002' || ch == L'\xFF0C'
-        || ch == L'\xFF1B' || ch == L'\xFF1A';
+        || ch == L'\xFF1B' || ch == L'\xFF1A' || ch == L'\x3001';
+}
+
+bool HasTranslatableSignal(const std::wstring& value)
+{
+    bool hasLetter = false;
+    for (wchar_t ch : value) {
+        if (iswalpha(ch)) {
+            hasLetter = true;
+            continue;
+        }
+        if ((ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z')) {
+            hasLetter = true;
+            continue;
+        }
+    }
+    return hasLetter;
+}
+
+bool IsNonTranslatableChatText(const std::wstring& text)
+{
+    std::wstring value = TrimChatEdgePunctuation(text);
+    if (value.empty()) return true;
+    if (!HasTranslatableSignal(value)) return true;
+    return false;
 }
 
 std::wstring TrimChatEdgePunctuation(std::wstring value)
@@ -1913,6 +1941,11 @@ void TranslateEngine::Submit(unsigned int id, const std::wstring& value)
         return;
     }
 
+    if (IsNonTranslatableChatText(value) || text::MostlyChinese(value)) {
+        LogLine(L"[Translate] \"" + value + L"\" -> skip: non-translatable");
+        return;
+    }
+
     if (!running_) {
         LogLine(L"[Translate] \"" + value + L"\" -> skip: engine not running");
         return;
@@ -2046,14 +2079,8 @@ std::wstring TranslateEngine::RunProviders(const std::wstring& value, HttpAgent&
         if (found != cache_.end()) return found->second;
     }
 
-    // 纯标点/符号/单字符 不值得翻译
-    bool allPunct = true;
-    for (wchar_t ch : value) {
-        if (iswalnum(ch) && ch > 127) { allPunct = false; break; }
-        if (iswalpha(ch)) { allPunct = false; break; }
-    }
-    if (allPunct) {
-        LogLine(L"[Translate] \"" + value + L"\" -> 跳过(纯符号)");
+    if (IsNonTranslatableChatText(value) || text::MostlyChinese(value)) {
+        LogLine(L"[Translate] \"" + value + L"\" -> 跳过(无需翻译)");
         return L"";
     }
 
@@ -2241,5 +2268,9 @@ void TranslateEngine::LogLine(const std::wstring& line) const
 
 bool TranslateEngine::ShouldTranslate(const std::wstring& text)
 {
-    return !text.empty() && !text::MostlyChinese(text);
+    std::wstring value = text::Trim(text);
+    if (value.empty()) return false;
+    if (!ShortPhraseFallback(value).empty()) return true;
+    if (IsNonTranslatableChatText(value)) return false;
+    return !text::MostlyChinese(value);
 }

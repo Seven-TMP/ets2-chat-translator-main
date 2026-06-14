@@ -757,9 +757,13 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
     RECT accent{ 16, 12, 20, topBand_ - 10 };
     RoundFill(dc, accent, 4, cBlue);
 
-    int titleRight = (searchBox_ && IsWindowVisible(searchBox_)) ? searchBoxRect_.left - 10 : bounds.right - 120;
-    RECT title{ 30, 0, (std::max)(128, titleRight), topBand_ };
+    RECT title{ 30, 0, 174, topBand_ };
     DrawTextLine(dc, titleFont_, cText, L"TruckersMP Chat", title, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+    if (searchBox_ && IsWindowVisible(searchBox_)) {
+        RoundFill(dc, searchBoxRect_, 7, RGB(11, 16, 24));
+        StrokeRound(dc, searchBoxRect_, 7, RGB(52, 64, 86));
+    }
 
     RECT tag{ bounds.right - 118, 14, bounds.right - 52, topBand_ - 12 };
     RoundFill(dc, tag, 12, RGB(22, 42, 62));
@@ -780,14 +784,9 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
     }
     RECT statusBox{ 16, topBand_, bounds.right - 16, topBand_ + statusBand_ - 6 };
     RoundFill(dc, statusBox, 10, RGB(13, 18, 27));
-    if (searchBox_ && IsWindowVisible(searchBox_)) {
-        RoundFill(dc, searchBoxRect_, 7, RGB(11, 16, 24));
-        StrokeRound(dc, searchBoxRect_, 7, RGB(52, 64, 86));
-    }
     RECT dot{ statusBox.left + 12, statusBox.top + 10, statusBox.left + 20, statusBox.top + 18 };
     RoundFill(dc, dot, 8, RGB(16, 185, 129));
-    int statusLeft = (searchBox_ && IsWindowVisible(searchBox_)) ? searchBoxRect_.right + 12 : statusBox.left + 28;
-    RECT statusText{ statusLeft, statusBox.top, statusBox.right - 12, statusBox.bottom };
+    RECT statusText{ statusBox.left + 28, statusBox.top, statusBox.right - 12, statusBox.bottom };
     DrawTextLine(dc, smallFont_, cDim, CompactStatus(status), statusText, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
     RECT area{ 0, topBand_ + statusBand_, bounds.right, bounds.bottom - 8 };
@@ -883,21 +882,23 @@ void ChatPanel::LayoutSearchBox(RECT bounds)
     if (!searchBox_) return;
 
     int clientWidth = (int)bounds.right;
-    int statusLeft = 16;
-    int width = (std::min)(150, (std::max)(92, clientWidth / 5));
-    int left = statusLeft + 10;
+    int left = 206;
+    int rightLimit = clientWidth - 132;
+    int width = (std::min)(180, (std::max)(112, clientWidth / 4));
+    if (left + width > rightLimit) width = rightLimit - left;
     int right = left + width;
-    int top = topBand_ + 5;
-    int bottom = topBand_ + statusBand_ - 11;
+    int height = (std::max)(24, (std::min)(30, topBand_ - 20));
+    int top = (std::max)(8, (topBand_ - height) / 2);
+    int bottom = top + height;
 
-    if (clientWidth < 420 || right > clientWidth - 150 || bottom <= top + 12) {
+    if (clientWidth < 520 || width < 96 || right > rightLimit || bottom <= top + 16) {
         ShowWindow(searchBox_, SW_HIDE);
         return;
     }
 
     searchBoxRect_ = { left, top, right, bottom };
-    SetWindowPos(searchBox_, nullptr, left + 6, top + 2,
-        (std::max)(40, width - 12), (std::max)(18, bottom - top - 4),
+    SetWindowPos(searchBox_, nullptr, left + 8, top + 3,
+        (std::max)(48, width - 16), (std::max)(18, height - 6),
         SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }
 

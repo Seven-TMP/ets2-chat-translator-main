@@ -1,10 +1,10 @@
 {
-  "version": "0.3.9",
-  "tag_name": "v0.3.9",
-  "name": "v0.3.9",
-  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.9/ETS2-Chat-Translator-Manager-Setup-0.3.9.exe",
-  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.9.exe",
-  "size": 82692343,
-  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.9",
-  "notes": "### v0.3.9\n\n- 悬浮窗搜索框贴近状态栏，修复输入框文字不可见的问题，并显示搜索结果数量。\n- 悬浮窗搜索会读取当天 log_spawning_YYYY.MM.DD_log.txt，支持按玩家名、临时编号、TMPID、SteamID64、Tag 查找，多结果会逐条排列。\n- 悬浮窗背景透明度下限从 35 调整为 0，支持真正全透明背景。\n- 管理器保存配置时批量加密密钥，减少点击保存时的短暂卡顿。"
+  "version": "0.3.10",
+  "tag_name": "v0.3.10",
+  "name": "v0.3.10",
+  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.10/ETS2-Chat-Translator-Manager-Setup-0.3.10.exe",
+  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.10.exe",
+  "size": 82692336,
+  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.10",
+  "notes": "### v0.3.10\n\n- 悬浮窗搜索框回到标题栏区域，尺寸和文字显示更正常，不再挤占状态栏绿点。\n- ？？？？、纯标点、纯数字等内容会直接原样显示，不再提交翻译接口，也不会卡在“翻译中”。\n- 悬浮窗隐藏、翻译器未就绪或无需翻译时，会显示原消息，避免出现误导性的失败提示。"
 }

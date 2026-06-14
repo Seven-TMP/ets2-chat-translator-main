@@ -103,7 +103,7 @@ graph TD
 ```
 
 1. **下载并运行安装包**：
-   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.9.exe` 进行安装。
+   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.10.exe` 进行安装。
 2. **打开管理器**：启动安装好的 `ETS2 Chat Translator Manager`。
 3. **识别游戏目录**：选择对应的游戏（ETS2 或 ATS），管理器会尝试自动定位。若未找到，可手动选择游戏主程序所在的 bin 目录。
 4. **一键部署 DLL**：点击 `安装 / 更新 DLL` 按钮。
@@ -281,7 +281,7 @@ build/
 ├── ets2_chat_translator_app/                       # 绿色版管理器 (绿色免安装)
 │   └── ETS2 Chat Translator Manager.exe
 └── installer/
-    └── ETS2-Chat-Translator-Manager-Setup-0.3.9.exe # 独立安装包 (集成 NSIS)
+    └── ETS2-Chat-Translator-Manager-Setup-0.3.10.exe # 独立安装包 (集成 NSIS)
 ```
 
 ---
@@ -335,6 +335,11 @@ build/
 ---
 
 ## 🧾 历史版本更新
+
+### 🚀 v0.3.10
+* **🔍 悬浮窗搜索框修复**：搜索框回到标题栏区域，尺寸和文字显示更正常，不再挤占状态栏绿点。
+* **🚫 无意义消息过滤**：`？？？？、`、纯标点、纯数字等内容会直接原样显示，不再提交翻译接口，也不会卡在“翻译中”。
+* **🧩 跳过翻译显示优化**：悬浮窗隐藏、翻译器未就绪或无需翻译时，会显示原消息，避免出现误导性的失败提示。
 
 ### 🚀 v0.3.9
 * **🔍 悬浮窗搜索优化**：搜索框贴近状态栏，修复输入框文字不可见的问题，并显示搜索结果数量。
