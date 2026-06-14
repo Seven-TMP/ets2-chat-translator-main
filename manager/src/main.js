@@ -830,6 +830,21 @@ function isMiMoProvider(provider) {
   return probe.includes('mimo') || probe.includes('xiaomi') || probe.includes('xiaomimimo');
 }
 
+function isOllamaProvider(provider) {
+  const probe = providerProbe(provider);
+  return probe.includes('ollama') || probe.includes('translategemma') || probe.includes(':11434');
+}
+
+function isLoopbackProviderBase(provider) {
+  try {
+    const url = new URL(provider.base_url || provider.baseUrl || '');
+    const host = url.hostname.toLowerCase();
+    return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host);
+  } catch {
+    return false;
+  }
+}
+
 function missing(provider, fields) {
   const names = fields.filter((field) => !provider[field]);
   return names.length ? `缺少 ${names.join(', ')}` : '';
@@ -899,11 +914,15 @@ async function testOpenAI(provider, runtime) {
     : isMiMoProvider(provider)
       ? 'https://api.xiaomimimo.com/v1'
     : 'https://api.openai.com/v1';
-  return finishProviderTest(provider, runtime, () => requestText('POST',
+  const result = await finishProviderTest(provider, runtime, () => requestText('POST',
     joinProviderUrl(provider.base_url, fallbackBaseUrl, '/chat/completions'),
     headers,
     body,
     runtime.timeoutMs));
+  if (!result.ok && isOllamaProvider(provider) && isLoopbackProviderBase(provider)) {
+    result.error = `${result.error || '请求失败'}；localhost 只代表当前电脑，如果 Ollama 装在别人电脑或服务器上，请把 Base URL 改成 http://远端IP:11434/v1`;
+  }
+  return result;
 }
 
 async function testMyMemory(provider, runtime) {
@@ -1176,9 +1195,10 @@ async function testProvider(provider, runtime) {
 async function testConfigText(jsonText) {
   const config = transformProviderSecrets(JSON.parse(jsonText), 'decrypt');
   const providers = (config.providers || []).filter((provider) => provider && provider.enabled && provider.kind);
+  const hasOllama = providers.some(isOllamaProvider);
   const runtime = {
     target: config.target_lang || 'zh-CN',
-    timeoutMs: Math.max(1500, Math.min(30000, config.timeout_ms || 5000)),
+    timeoutMs: hasOllama ? 30000 : Math.max(1500, Math.min(30000, config.timeout_ms || 5000)),
     sampleText: 'hello'
   };
   if (!providers.length) {

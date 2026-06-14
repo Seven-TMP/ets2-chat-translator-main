@@ -1,10 +1,11 @@
 {
-  "version": "0.3.13",
-  "tag_name": "v0.3.13",
-  "name": "v0.3.13",
-  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.13/ETS2-Chat-Translator-Manager-Setup-0.3.13.exe",
-  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.13.exe",
-  "size": 82823299,
-  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.13",
-  "notes": "### v0.3.13\n\n- 管理器新增 Ollama 本地/远端预设，自动把 :11434/api 修正为 OpenAI 兼容的 :11434/v1。\n- 管理器和插件请求超时上限从 6 秒放宽到 30 秒，适配 translategemma:27b 这类首次加载和生成较慢的模型。\n- 识别 Ollama / :11434 / translategemma 后主 Provider 限制单并发，减少远端 27B 被多请求压到排队超时。\n- 补充 sa、var、gel、f7 at、Кидай дс、Кину запись、Поворотник включать надо 等本地兜底，减少 MyMemory 误翻。\n- 单个明显用户名或无意义文本不再提交翻译接口，降低慢请求和失败噪音。"
+  "version": "0.3.14",
+  "tag_name": "v0.3.14",
+  "name": "v0.3.14",
+  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.14/ETS2-Chat-Translator-Manager-Setup-0.3.14.exe",
+  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.14.exe",
+  "size": 82823991,
+  "sha256": "1D1C1102C5D007728B7D09FCE3E7B7720B68A538C12B4B7FE32982C066755804",
+  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.14",
+  "notes": "### v0.3.14\n\n- 读取旧配置或切换到 Ollama / translategemma 时，管理器会自动把 Provider 名称修正为 Ollama、并发调整为 1、超时调整为 30000ms。\n- 测试配置失败时，如果 Base URL 仍是 localhost，会明确提示 localhost 只代表当前电脑，远端部署应填写 http://远端IP:11434/v1。\n- 只要配置里识别到 Ollama / :11434 / translategemma，测试接口会按 30 秒超时执行，避免 27B 首次加载或排队时被 6 秒提前判定失败。"
 }

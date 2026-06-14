@@ -103,7 +103,7 @@ graph TD
 ```
 
 1. **下载并运行安装包**：
-   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.13.exe` 进行安装。
+   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.14.exe` 进行安装。
 2. **打开管理器**：启动安装好的 `ETS2 Chat Translator Manager`。
 3. **识别游戏目录**：选择对应的游戏（ETS2 或 ATS），管理器会尝试自动定位。若未找到，可手动选择游戏主程序所在的 bin 目录。
 4. **一键部署 DLL**：点击 `安装 / 更新 DLL` 按钮。
@@ -281,7 +281,7 @@ build/
 ├── ets2_chat_translator_app/                       # 绿色版管理器 (绿色免安装)
 │   └── ETS2 Chat Translator Manager.exe
 └── installer/
-    └── ETS2-Chat-Translator-Manager-Setup-0.3.13.exe # 独立安装包 (集成 NSIS)
+    └── ETS2-Chat-Translator-Manager-Setup-0.3.14.exe # 独立安装包 (集成 NSIS)
 ```
 
 ---
@@ -335,6 +335,11 @@ build/
 ---
 
 ## 🧾 历史版本更新
+
+### 🚀 v0.3.14
+* **🦙 Ollama 配置自修正**：读取旧配置或切换到 Ollama / `translategemma` 时，管理器会自动把 Provider 名称修正为 `Ollama`、并发调整为 `1`、超时调整为 `30000ms`。
+* **🌐 远端 Ollama 提示增强**：测试配置失败时，如果 Base URL 仍是 `localhost`，会明确提示 `localhost` 只代表当前电脑，远端部署应填写 `http://远端IP:11434/v1`。
+* **🧪 测试配置更稳**：只要配置里识别到 Ollama / `:11434` / `translategemma`，测试接口会按 30 秒超时执行，避免 27B 首次加载或排队时被 6 秒提前判定失败。
 
 ### 🚀 v0.3.13
 * **🦙 Ollama 远端适配**：管理器新增 Ollama 本地/远端预设，自动把 `:11434/api` 修正为 OpenAI 兼容的 `:11434/v1`。

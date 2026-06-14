@@ -206,6 +206,10 @@ const PROVIDER_PRESETS = {
   }
 };
 
+const OLLAMA_DEFAULT_WORKERS = 1;
+const OLLAMA_DEFAULT_TIMEOUT_MS = 30000;
+const GENERIC_OPENAI_LABELS = new Set(['', 'openai', 'openai compatible', 'openai-compatible', 'openai_compatible']);
+
 function fallbackProviders(target) {
   return [
     { kind: 'mymemory', label: 'MyMemory', enabled: true, source: 'auto', target },
@@ -267,9 +271,7 @@ function escapeHtml(value) {
 function normalizeOpenAIBaseUrl(value, selected = {}) {
   const raw = String(value || '').trim();
   if (!raw) return raw;
-  const probe = `${selected.label || ''} ${selected.kind || ''} ${selected.model || ''} ${raw}`.toLowerCase();
-  const likelyOllama = probe.includes('ollama') || probe.includes('translategemma') || /(^|[/:])11434(\/|$)/.test(raw);
-  if (!likelyOllama) return raw;
+  if (!looksLikeOllama(`${selected.label || ''} ${selected.kind || ''} ${selected.model || ''} ${raw}`)) return raw;
 
   try {
     const url = new URL(raw);
@@ -280,6 +282,40 @@ function normalizeOpenAIBaseUrl(value, selected = {}) {
   } catch {
     return raw;
   }
+}
+
+function looksLikeOllama(value) {
+  const probe = String(value || '').toLowerCase();
+  return probe.includes('ollama') || probe.includes('translategemma') || /(^|[/:])11434(\/|$)/.test(probe);
+}
+
+function isOllamaPresetValue(value) {
+  return value === 'ollama';
+}
+
+function activeProviderLooksLikeOllama() {
+  const selected = PROVIDER_PRESETS[els.preset.value] || PROVIDER_PRESETS.free;
+  if (!selected.kind) return false;
+  return isOllamaPresetValue(els.preset.value) || looksLikeOllama([
+    selected.label,
+    selected.kind,
+    selected.model,
+    els.providerLabel.value,
+    els.baseUrl.value,
+    els.model.value
+  ].filter(Boolean).join(' '));
+}
+
+function applyProviderRuntimeDefaults(force = false) {
+  if (!activeProviderLooksLikeOllama()) return;
+  const selected = PROVIDER_PRESETS.ollama;
+  const label = els.providerLabel.value.trim().toLowerCase();
+  if (force || GENERIC_OPENAI_LABELS.has(label)) els.providerLabel.value = selected.label;
+  const normalized = normalizeOpenAIBaseUrl(els.baseUrl.value.trim() || selected.baseUrl, selected);
+  if (normalized) els.baseUrl.value = normalized;
+  if (!els.model.value.trim()) els.model.value = selected.model;
+  if (force || numberValue(els.workers, 8) > OLLAMA_DEFAULT_WORKERS) els.workers.value = OLLAMA_DEFAULT_WORKERS;
+  if (force || numberValue(els.timeoutMs, 5000) < OLLAMA_DEFAULT_TIMEOUT_MS) els.timeoutMs.value = OLLAMA_DEFAULT_TIMEOUT_MS;
 }
 
 function renderTestResult(result) {
@@ -487,31 +523,35 @@ function primaryPresetValue(provider) {
 }
 
 function applyConfigObject(config, statusText = '') {
+  const primary = (config.providers || []).find((provider) => provider.enabled && !['mymemory', 'andeer'].includes(provider.kind));
+  const presetValue = primary ? primaryPresetValue(primary) : 'free';
+  const isOllama = isOllamaPresetValue(presetValue);
   els.targetLang.value = config.target_lang || 'zh-CN';
   els.overlayHotkey.value = config.overlay_hotkey || 'Ctrl+Shift+T';
-  els.workers.value = config.workers ?? 8;
+  els.workers.value = isOllama ? OLLAMA_DEFAULT_WORKERS : (config.workers ?? 8);
   els.queueLimit.value = config.queue_limit ?? 1000;
   els.cacheLimit.value = config.cache_limit ?? 1500;
-  els.timeoutMs.value = config.timeout_ms ?? 5000;
+  els.timeoutMs.value = isOllama ? Math.max(OLLAMA_DEFAULT_TIMEOUT_MS, config.timeout_ms ?? 5000) : (config.timeout_ms ?? 5000);
   els.fontSize.value = config.font_size ?? 18;
   setFontSize(config.font_size ?? 18);
   setOverlayOpacity(config.overlay_opacity ?? 98);
-  const primary = (config.providers || []).find((provider) => provider.enabled && !['mymemory', 'andeer'].includes(provider.kind));
   if (primary) {
-    els.preset.value = primaryPresetValue(primary);
+    els.preset.value = presetValue;
     const selected = PROVIDER_PRESETS[els.preset.value] || PROVIDER_PRESETS.openai;
-    els.providerLabel.value = primary.label || selected.label;
-    els.baseUrl.value = primary.base_url || selected.baseUrl;
+    const currentLabel = String(primary.label || '').trim();
+    els.providerLabel.value = isOllama && GENERIC_OPENAI_LABELS.has(currentLabel.toLowerCase()) ? selected.label : (currentLabel || selected.label);
+    els.baseUrl.value = normalizeOpenAIBaseUrl(primary.base_url || selected.baseUrl, selected);
     els.apiKey.value = primary.api_key || '';
     els.apiSecret.value = primary.api_secret || '';
     els.model.value = primary.model || selected.model;
     els.sourceLang.value = primary.source || primary.source_lang || 'auto';
+    if (isOllama) applyProviderRuntimeDefaults(true);
   } else {
     els.preset.value = 'free';
   }
   els.enableFallbacks.checked = (config.providers || []).some((provider) => ['mymemory', 'andeer'].includes(provider.kind));
-  els.preview.value = JSON.stringify(config, null, 2);
   syncProviderUi();
+  updatePreview();
   if (statusText) setStatus(statusText);
 }
 
@@ -541,6 +581,7 @@ function syncProviderUi() {
 
 function updatePreview() {
   syncProviderUi();
+  applyProviderRuntimeDefaults(false);
   els.preview.value = JSON.stringify(buildConfig(), null, 2);
 }
 
