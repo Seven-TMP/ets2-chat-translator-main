@@ -103,7 +103,7 @@ graph TD
 ```
 
 1. **下载并运行安装包**：
-   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.11.exe` 进行安装。
+   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.12.exe` 进行安装。
 2. **打开管理器**：启动安装好的 `ETS2 Chat Translator Manager`。
 3. **识别游戏目录**：选择对应的游戏（ETS2 或 ATS），管理器会尝试自动定位。若未找到，可手动选择游戏主程序所在的 bin 目录。
 4. **一键部署 DLL**：点击 `安装 / 更新 DLL` 按钮。
@@ -190,7 +190,7 @@ graph TD
 **配置模板 (`kind: "deepseek"`)：**
 * **Base URL**: `https://api.deepseek.com`
 * **推荐模型**: `deepseek-v4-flash` (速度极快，适合聊天翻译)
-* *注：插件会自动为 DeepSeek 禁用思考（thinking）过程，以换取最低的延迟。*
+* *注：插件会自动为 DeepSeek / MiMo 禁用思考（thinking）过程，以换取最低的延迟。*
 
 ```json
 {
@@ -281,7 +281,7 @@ build/
 ├── ets2_chat_translator_app/                       # 绿色版管理器 (绿色免安装)
 │   └── ETS2 Chat Translator Manager.exe
 └── installer/
-    └── ETS2-Chat-Translator-Manager-Setup-0.3.11.exe # 独立安装包 (集成 NSIS)
+    └── ETS2-Chat-Translator-Manager-Setup-0.3.12.exe # 独立安装包 (集成 NSIS)
 ```
 
 ---
@@ -335,6 +335,12 @@ build/
 ---
 
 ## 🧾 历史版本更新
+
+### 🚀 v0.3.12
+* **🧠 MiMo 翻译修复**：OpenAI 兼容协议下识别小米 MiMo，自动禁用 thinking，并使用 MiMo 兼容的输出 token 参数，避免 `HTTP 200` 但 `content` 为空后降级。
+* **💬 聊天缩写兜底增强**：`wtf`、`sory`、`pardon`、`broooo`、`ahahah` 等短句优先走本地字典，减少第三方公共语料误翻。
+* **⚡ 翻译速度优化**：高频短句、表情和 `名字 rec/ban` 这类消息直接本地处理；连续空响应或解析失败的 Provider 会短暂冷却，避免每条消息都先卡一轮失败请求。
+* **🧹 缓存误翻规避**：单词缩写会先于缓存和 Provider 处理，避免 `wtf` 被公共翻译接口误命中后继续复用错误结果。
 
 ### 🚀 v0.3.11
 * **🔎 搜索框自绘重构**：悬浮窗搜索框新增放大镜图标，输入文字直接由悬浮窗绘制，解决分层窗口里输入文字不显示的问题。

@@ -798,6 +798,26 @@ function providerName(provider) {
   return provider.label || provider.kind || 'Provider';
 }
 
+function providerProbe(provider) {
+  return [
+    provider.kind,
+    provider.label,
+    provider.base_url,
+    provider.baseUrl,
+    provider.model
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function isDeepSeekProvider(provider) {
+  const kind = String(provider.kind || '').toLowerCase();
+  return ['deepseek', 'deepseek_chat', 'deepseek_compatible'].includes(kind);
+}
+
+function isMiMoProvider(provider) {
+  const probe = providerProbe(provider);
+  return probe.includes('mimo') || probe.includes('xiaomi') || probe.includes('xiaomimimo');
+}
+
 function missing(provider, fields) {
   const names = fields.filter((field) => !provider[field]);
   return names.length ? `缺少 ${names.join(', ')}` : '';
@@ -848,7 +868,12 @@ async function testOpenAI(provider, runtime) {
       { role: 'user', content: runtime.sampleText }
     ]
   };
-  if (String(provider.kind || '').toLowerCase() === 'deepseek') {
+  if (isMiMoProvider(provider)) {
+    bodyObject.max_completion_tokens = 96;
+  } else {
+    bodyObject.max_tokens = 96;
+  }
+  if (isDeepSeekProvider(provider) || isMiMoProvider(provider)) {
     bodyObject.thinking = { type: 'disabled' };
   }
   const body = JSON.stringify(bodyObject);
@@ -857,8 +882,10 @@ async function testOpenAI(provider, runtime) {
     Accept: 'application/json'
   };
   if (provider.api_key) headers.Authorization = `Bearer ${provider.api_key}`;
-  const fallbackBaseUrl = String(provider.kind || '').toLowerCase() === 'deepseek'
+  const fallbackBaseUrl = isDeepSeekProvider(provider)
     ? 'https://api.deepseek.com'
+    : isMiMoProvider(provider)
+      ? 'https://api.xiaomimimo.com/v1'
     : 'https://api.openai.com/v1';
   return finishProviderTest(provider, runtime, () => requestText('POST',
     joinProviderUrl(provider.base_url, fallbackBaseUrl, '/chat/completions'),

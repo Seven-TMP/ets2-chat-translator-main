@@ -209,11 +209,15 @@ const ChatTokenItem* ChatTokenItems(size_t& count)
         { L"lmao", L"哈哈", true },
         { L"rofl", L"笑死", true },
         { L"xd", L"哈哈", true },
+        { L"sb", L"傻逼", true },
         { L"sry", L"抱歉", true },
         { L"sr", L"抱歉", true },
+        { L"sory", L"抱歉", true },
         { L"srry", L"抱歉", true },
+        { L"srrry", L"抱歉", true },
         { L"sorry", L"抱歉", true },
         { L"soz", L"抱歉", true },
+        { L"pardon", L"抱歉", true },
         { L"pls", L"请", false },
         { L"plz", L"请", false },
         { L"please", L"请", false },
@@ -243,6 +247,7 @@ const ChatTokenItem* ChatTokenItems(size_t& count)
         { L"hello", L"你好", true },
         { L"hey", L"嘿", true },
         { L"yo", L"嘿", true },
+        { L"ow", L"嗷", true },
         { L"sup", L"咋样", true },
         { L"bye", L"再见", true },
         { L"cya", L"再见", true },
@@ -271,6 +276,10 @@ const ChatTokenItem* ChatTokenItems(size_t& count)
         { L"move", L"让一下", true },
         { L"lag", L"卡顿", true },
         { L"laggy", L"很卡", true },
+        { L"tamam", L"好的", true },
+        { L"neden", L"为什么", true },
+        { L"hayir", L"不", true },
+        { L"hayır", L"不", true },
         { L"crash", L"撞车", true },
         { L"ram", L"撞人", true },
         { L"rammer", L"撞人玩家", true },
@@ -297,6 +306,27 @@ const ChatTokenItem* ChatTokenItems(size_t& count)
     };
     count = sizeof(items) / sizeof(items[0]);
     return items;
+}
+
+bool IsSingleLetterProviderRisk(const std::wstring& token, const std::wstring& value, size_t start, size_t end)
+{
+    if (token.size() != 1) return false;
+    for (size_t i = 0; i < start; ++i) {
+        if (!iswspace(value[i])) return true;
+    }
+    for (size_t i = end; i < value.size(); ++i) {
+        if (!iswspace(value[i])) return true;
+    }
+    return false;
+}
+
+bool HasNameJoinerAroundToken(const std::wstring& value, size_t start, size_t end)
+{
+    auto isJoiner = [](wchar_t ch) {
+        return ch == L'-' || ch == L'_' || ch == L'/' || ch == L'\\';
+    };
+    return (start > 0 && isJoiner(value[start - 1]))
+        || (end < value.size() && isJoiner(value[end]));
 }
 
 bool ProviderLeftoverToken(const std::wstring& token, std::wstring& translated, bool& pauseAfter)
@@ -387,7 +417,9 @@ std::wstring FixProviderLeftoverShorthand(const std::wstring& value)
         std::wstring token = value.substr(start, i - start);
         std::wstring translated;
         bool pauseAfter = false;
-        if (ProviderLeftoverToken(token, translated, pauseAfter)) {
+        if (!IsSingleLetterProviderRisk(token, value, start, i)
+            && !HasNameJoinerAroundToken(value, start, i)
+            && ProviderLeftoverToken(token, translated, pauseAfter)) {
             out += translated;
             if (pauseAfter && i < value.size() && NeedsPauseAfterToken(value[i])) out += L"，";
             changed = true;
@@ -457,13 +489,28 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
     struct Item { const wchar_t* key; const wchar_t* value; };
     static const Item exact[] = {
         { L"thank you", L"谢谢" },
+        { L"thank", L"谢谢" },
         { L"good luck", L"祝好运" },
         { L"have fun", L"玩得开心" },
+        { L"gute reise", L"一路顺风" },
+        { L"nice lag", L"卡得真漂亮" },
+        { L"stop horn", L"别按喇叭" },
+        { L"the player stop horn", L"那个玩家别按喇叭" },
         { L"rec ban", L"已录屏，等封禁" },
         { L"o/", L"挥手" },
         { L"o//", L"挥手" },
+        { L"0/", L"挥手" },
+        { L"0//", L"挥手" },
         { L"\\o", L"挥手" },
         { L"\\o/", L"欢呼" },
+        { L"wtf is this", L"什么鬼，这是啥" },
+        { L"what the fuck", L"什么鬼" },
+        { L"what the hell", L"什么鬼" },
+        { L"ahah", L"哈哈" },
+        { L"ahaha", L"哈哈" },
+        { L"ahahah", L"哈哈" },
+        { L"haha", L"哈哈" },
+        { L"hahaha", L"哈哈" },
         { L":)", L"微笑" },
         { L":(", L"难过" },
         { L":d", L"哈哈" },
@@ -538,7 +585,7 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
         }
         tokenTranslations.push_back(translated);
     }
-    if (tokenTranslations.size() >= 2 && tokenTranslations.size() <= 5) {
+    if (tokenTranslations.size() >= 1 && tokenTranslations.size() <= 5) {
         std::wstring out;
         for (const auto& translated : tokenTranslations) {
             if (!out.empty()) out += L"，";
@@ -556,6 +603,22 @@ std::wstring ShortPhraseFallback(const std::wstring& input)
 
     for (const auto& item : exact) {
         if (EndsWithWord(trailingTrimmed, item.key, prefix)) {
+            size_t keep = input.size() - (lower.size() - prefix.size());
+            return text::Trim(input.substr(0, keep)) + L" " + item.value;
+        }
+    }
+
+    struct SuffixAction { const wchar_t* key; const wchar_t* value; };
+    static const SuffixAction suffixActions[] = {
+        { L"rec", L"已录屏" },
+        { L"recording", L"已录屏" },
+        { L"report", L"举报" },
+        { L"rep", L"举报" },
+        { L"ban", L"封禁" },
+        { L"kick", L"踢出" }
+    };
+    for (const auto& item : suffixActions) {
+        if (EndsWithWord(trailingTrimmed, item.key, prefix) && !prefix.empty()) {
             size_t keep = input.size() - (lower.size() - prefix.size());
             return text::Trim(input.substr(0, keep)) + L" " + item.value;
         }
@@ -611,8 +674,8 @@ bool PermanentProviderError(const std::wstring& error)
 
 int MaxOutputTokensForChat(const std::wstring& input)
 {
-    int byLength = 64 + (int)(input.size() / 3);
-    return (std::max)(96, (std::min)(192, byLength));
+    int byLength = 56 + (int)(input.size() / 4);
+    return (std::max)(64, (std::min)(160, byLength));
 }
 
 std::wstring NowStamp()
@@ -1209,29 +1272,34 @@ public:
         std::wstring host, prefix;
         INTERNET_PORT port = 443;
         bool tls = true;
-        std::wstring baseUrl = settings_.baseUrl.empty() && IsDeepSeek()
-            ? L"https://api.deepseek.com"
-            : settings_.baseUrl;
+        bool deepSeek = IsDeepSeek();
+        bool miMo = IsMiMo();
+        std::wstring baseUrl = settings_.baseUrl;
+        if (baseUrl.empty() && deepSeek) baseUrl = L"https://api.deepseek.com";
+        if (baseUrl.empty() && miMo) baseUrl = L"https://api.xiaomimimo.com/v1";
         if (!SplitUrl(baseUrl, host, port, prefix, tls)) {
             error = L"bad base_url";
             return L"";
         }
-        std::wstring model = settings_.model.empty() && IsDeepSeek()
+        std::wstring model = settings_.model.empty() && deepSeek
             ? L"deepseek-v4-flash"
             : settings_.model;
 
         std::wstring target = EffectiveTarget(settings_, runtime).empty() ? L"zh-CN" : EffectiveTarget(settings_, runtime);
         std::wstring prompt = L"You translate TruckersMP/ETS2 multiplayer chat into " + target +
-            L". Output only the translation, no quotes or explanations. "
-            L"Translate any source language and short slang. Common chat: sry/sorry=抱歉, pls/plz=请, ty/thx=谢谢, "
-            L"np=没事, gg/wp=打得好, brb=马上回, afk=暂离, lol/xd=哈哈, idk=我不知道, rec=已录屏, wtf=什么鬼. "
-            L"Keep names, IDs, [tags], URLs and emoji unchanged. Never echo the original.";
+            L". Output only the translation, no quotes, no explanations, no reasoning. "
+            L"Any language/slang. Map sry=抱歉, ty/thx=谢谢, rec=已录屏, wtf=什么鬼. "
+            L"Keep names, IDs, tags, URLs and emoji unchanged.";
 
         std::string body = "{";
         body += "\"model\":\"" + text::EscapeJson(model) + "\",";
         body += "\"temperature\":0,";
-        body += "\"max_tokens\":" + std::to_string(MaxOutputTokensForChat(input)) + ",";
-        if (IsDeepSeek()) body += "\"thinking\":{\"type\":\"disabled\"},";
+        if (miMo) {
+            body += "\"max_completion_tokens\":" + std::to_string(MaxOutputTokensForChat(input)) + ",";
+        } else {
+            body += "\"max_tokens\":" + std::to_string(MaxOutputTokensForChat(input)) + ",";
+        }
+        if (deepSeek || miMo) body += "\"thinking\":{\"type\":\"disabled\"},";
         body += "\"messages\":[";
         body += "{\"role\":\"system\",\"content\":\"" + text::EscapeJson(prompt) + "\"},";
         body += "{\"role\":\"user\",\"content\":\"" + text::EscapeJson(input) + "\"}";
@@ -1263,7 +1331,13 @@ public:
             "result",
             "answer"
         });
-        if (out.empty()) error = L"cannot parse response";
+        if (out.empty()) {
+            if (r.payload.find("\"reasoning_content\"") != std::string::npos || r.payload.find("\"finish_reason\":\"length\"") != std::string::npos) {
+                error = L"empty content (thinking output consumed tokens)";
+            } else {
+                error = L"cannot parse response";
+            }
+        }
         return out;
     }
 
@@ -1272,6 +1346,14 @@ private:
     {
         std::wstring kind = LowerAscii(settings_.kind);
         return kind == L"deepseek" || kind == L"deepseek_chat" || kind == L"deepseek_compatible";
+    }
+
+    bool IsMiMo() const
+    {
+        std::wstring probe = LowerAscii(settings_.kind + L" " + settings_.label + L" " + settings_.baseUrl + L" " + settings_.model);
+        return probe.find(L"mimo") != std::wstring::npos
+            || probe.find(L"xiaomi") != std::wstring::npos
+            || probe.find(L"xiaomimimo") != std::wstring::npos;
     }
 };
 
@@ -2015,6 +2097,8 @@ bool RetryableProviderError(const std::wstring& error)
     return error.empty()
         || error.find(L"request failed") != std::wstring::npos
         || error.find(L"empty reply") != std::wstring::npos
+        || error.find(L"empty content") != std::wstring::npos
+        || error.find(L"cannot parse response") != std::wstring::npos
         || error.find(L"connect failed") != std::wstring::npos
         || error.find(L"status=0") != std::wstring::npos
         || error.find(L"HTTP 408") != std::wstring::npos
@@ -2253,6 +2337,13 @@ void TranslateEngine::NoteProviderResult(size_t index, bool success, const std::
     }
     if (PermanentProviderError(error)) {
         h.coolUntil = now + std::chrono::minutes(3);
+        return;
+    }
+    if (error.find(L"empty content") != std::wstring::npos || error.find(L"cannot parse response") != std::wstring::npos) {
+        h.nextAllowed = (std::max)(h.nextAllowed, now + std::chrono::milliseconds((std::min)(2200, 400 + h.failures * 300)));
+        if (h.failures >= 2) {
+            h.coolUntil = now + std::chrono::seconds((std::min)(35, 5 + h.failures * 5));
+        }
         return;
     }
     if (RetryableProviderError(error) && h.failures >= 2) {

@@ -1,10 +1,10 @@
 {
-  "version": "0.3.11",
-  "tag_name": "v0.3.11",
-  "name": "v0.3.11",
-  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.11/ETS2-Chat-Translator-Manager-Setup-0.3.11.exe",
-  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.11.exe",
-  "size": 82820263,
-  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.11",
-  "notes": "### v0.3.11\n\n- 悬浮窗搜索框新增放大镜图标，输入文字直接由悬浮窗绘制，解决分层窗口里输入文字不显示的问题。\n- 窗口拖窄时搜索框会自动压缩，不再因为宽度阈值突然消失。\n- 管理器新增“预览悬浮窗”按钮，无需进入游戏即可打开真实悬浮窗，测试搜索、拖拽、缩放和显示效果。"
+  "version": "0.3.12",
+  "tag_name": "v0.3.12",
+  "name": "v0.3.12",
+  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.12/ETS2-Chat-Translator-Manager-Setup-0.3.12.exe",
+  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.12.exe",
+  "size": 82821560,
+  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.12",
+  "notes": "### v0.3.12\n\n- 修复小米 MiMo 在 OpenAI 兼容协议下把输出额度消耗到 reasoning_content，导致 HTTP 200 但 content 为空的问题。\n- MiMo / DeepSeek 会自动禁用 thinking，MiMo 使用 max_completion_tokens，减少空响应和降级等待。\n- 修复 wtf 单词漏走本地字典的问题，避免 MyMemory 公共语料把 wtf 误翻成“我爱你很久了”。\n- 增强 sory、pardon、broooo、ahahah、0// 等游戏聊天短句和表情兜底。\n- 高响应失败的 Provider 会短暂冷却，减少高峰聊天时每条消息都先等待失败请求的延迟。"
 }
