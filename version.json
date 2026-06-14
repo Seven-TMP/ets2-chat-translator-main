@@ -1,10 +1,10 @@
 {
-  "version": "0.3.8",
-  "tag_name": "v0.3.8",
-  "name": "v0.3.8",
-  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.8/ETS2-Chat-Translator-Manager-Setup-0.3.8.exe",
-  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.8.exe",
-  "size": 82687942,
-  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.8",
-  "notes": "### v0.3.8\n\n- 更新检测流程优化：点击检查更新后先展开镜像选择，可直连检查、测速后自动选最快镜像，或手动选择镜像检查。\n- 镜像选择体验优化：更新镜像列表支持选中态、自定义镜像添加与清除，检查结果和更新日志分区展示更清晰。\n- 管理器布局调整：翻译配置、悬浮窗设置、配置预览和软件更新区域重新排版，宽屏下更容易平铺查看。"
+  "version": "0.3.9",
+  "tag_name": "v0.3.9",
+  "name": "v0.3.9",
+  "download_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/download/v0.3.9/ETS2-Chat-Translator-Manager-Setup-0.3.9.exe",
+  "asset_name": "ETS2-Chat-Translator-Manager-Setup-0.3.9.exe",
+  "size": 82692343,
+  "html_url": "https://github.com/Seven-TMP/ets2-chat-translator/releases/tag/v0.3.9",
+  "notes": "### v0.3.9\n\n- 悬浮窗搜索框贴近状态栏，修复输入框文字不可见的问题，并显示搜索结果数量。\n- 悬浮窗搜索会读取当天 log_spawning_YYYY.MM.DD_log.txt，支持按玩家名、临时编号、TMPID、SteamID64、Tag 查找，多结果会逐条排列。\n- 悬浮窗背景透明度下限从 35 调整为 0，支持真正全透明背景。\n- 管理器保存配置时批量加密密钥，减少点击保存时的短暂卡顿。"
 }

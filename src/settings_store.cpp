@@ -149,7 +149,7 @@ AppSettings Load(const std::wstring& path)
     s.runtime.cacheLimit = (size_t)(std::max)(100, Jint(json, "cache_limit", (int)s.runtime.cacheLimit));
     s.runtime.timeoutMs = (std::max)(1500, (std::min)(6000, Jint(json, "timeout_ms", s.runtime.timeoutMs)));
     s.runtime.fontSize = (std::max)(12, (std::min)(28, Jint(json, "font_size", s.runtime.fontSize)));
-    s.runtime.overlayOpacity = (std::max)(35, (std::min)(100, Jint(json, "overlay_opacity", s.runtime.overlayOpacity)));
+    s.runtime.overlayOpacity = (std::max)(0, (std::min)(100, Jint(json, "overlay_opacity", s.runtime.overlayOpacity)));
 
     auto blocks = ProviderBlocks(json);
     if (!blocks.empty()) {

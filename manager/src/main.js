@@ -501,27 +501,33 @@ function deletePreset(name) {
 const CONFIG_SECRET_PREFIX = 'enc:dpapi:';
 const CONFIG_SECRET_FIELDS = ['api_key', 'api_secret', 'secret_key'];
 
-function runProtectedData(action, value) {
+function runProtectedDataBatch(action, values) {
   const prelude = `
 Add-Type -AssemblyName System.Security
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$items = [Console]::In.ReadToEnd() | ConvertFrom-Json
+$out = @()
 `;
   const script = action === 'protect'
     ? `${prelude}
-$plain = [Console]::In.ReadToEnd()
-$bytes = [Text.Encoding]::UTF8.GetBytes($plain)
-$protected = [Security.Cryptography.ProtectedData]::Protect($bytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
-[Console]::Out.Write([Convert]::ToBase64String($protected))
+foreach ($plain in $items) {
+  $bytes = [Text.Encoding]::UTF8.GetBytes([string]$plain)
+  $protected = [Security.Cryptography.ProtectedData]::Protect($bytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+  $out += [Convert]::ToBase64String($protected)
+}
+[Console]::Out.Write(($out | ConvertTo-Json -Compress))
 `
     : `${prelude}
-$cipher = [Console]::In.ReadToEnd().Trim()
-$bytes = [Convert]::FromBase64String($cipher)
-$plain = [Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
-[Console]::Out.Write([Text.Encoding]::UTF8.GetString($plain))
+foreach ($cipher in $items) {
+  $bytes = [Convert]::FromBase64String(([string]$cipher).Trim())
+  $plain = [Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+  $out += [Text.Encoding]::UTF8.GetString($plain)
+}
+[Console]::Out.Write(($out | ConvertTo-Json -Compress))
 `;
   try {
-    return childProcess.execFileSync('powershell.exe', [
+    const output = childProcess.execFileSync('powershell.exe', [
       '-NoProfile',
       '-NonInteractive',
       '-ExecutionPolicy',
@@ -529,15 +535,21 @@ $plain = [Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [Securi
       '-Command',
       script
     ], {
-      input: String(value || ''),
+      input: JSON.stringify(values || []),
       encoding: 'utf8',
       windowsHide: true,
       maxBuffer: 1024 * 1024
     });
+    const parsed = JSON.parse(output || '[]');
+    return Array.isArray(parsed) ? parsed : [parsed];
   } catch (error) {
     const detail = error.stderr ? String(error.stderr).trim() : error.message;
     throw new Error(`密钥${action === 'protect' ? '加密' : '解密'}失败：${detail}`);
   }
+}
+
+function runProtectedData(action, value) {
+  return runProtectedDataBatch(action, [String(value || '')])[0] || '';
 }
 
 function isEncryptedSecret(value) {
@@ -556,12 +568,26 @@ function decryptConfigSecret(value) {
 
 function transformProviderSecrets(config, mode) {
   const next = JSON.parse(JSON.stringify(config || {}));
+  const targets = [];
   for (const provider of next.providers || []) {
     for (const field of CONFIG_SECRET_FIELDS) {
       if (typeof provider[field] !== 'string' || !provider[field]) continue;
-      provider[field] = mode === 'encrypt' ? encryptConfigSecret(provider[field]) : decryptConfigSecret(provider[field]);
+      const value = provider[field];
+      if (mode === 'encrypt' && !isEncryptedSecret(value)) {
+        targets.push({ provider, field, value });
+      } else if (mode === 'decrypt' && isEncryptedSecret(value)) {
+        targets.push({ provider, field, value: value.slice(CONFIG_SECRET_PREFIX.length) });
+      }
     }
   }
+  if (!targets.length) return next;
+
+  const transformed = runProtectedDataBatch(mode === 'encrypt' ? 'protect' : 'unprotect', targets.map((item) => item.value));
+  targets.forEach((item, index) => {
+    item.provider[item.field] = mode === 'encrypt'
+      ? `${CONFIG_SECRET_PREFIX}${transformed[index] || ''}`
+      : (transformed[index] || '');
+  });
   return next;
 }
 

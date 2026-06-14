@@ -103,7 +103,7 @@ graph TD
 ```
 
 1. **下载并运行安装包**：
-   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.8.exe` 进行安装。
+   双击运行 `build\installer\ETS2-Chat-Translator-Manager-Setup-0.3.9.exe` 进行安装。
 2. **打开管理器**：启动安装好的 `ETS2 Chat Translator Manager`。
 3. **识别游戏目录**：选择对应的游戏（ETS2 或 ATS），管理器会尝试自动定位。若未找到，可手动选择游戏主程序所在的 bin 目录。
 4. **一键部署 DLL**：点击 `安装 / 更新 DLL` 按钮。
@@ -249,6 +249,7 @@ graph TD
 | `cache_limit` | Integer | `1500` | 翻译结果在内存中的最大缓存数量，相同文本不重复请求 API |
 | `timeout_ms` | Integer | `5000` | HTTP 请求超时时间（毫秒，系统会限制在 `1500` - `6000` 之间） |
 | `font_size` | Integer | `18` | 游戏内悬浮窗的字体大小 (px) |
+| `overlay_opacity` | Integer | `98` | 悬浮窗背景透明度，范围 `0` - `100`，设为 `0` 时背景全透明 |
 | `providers` | Array | `[...]` | 翻译提供商列表。**系统会按数组顺序尝试，首位失败自动降级至下一位** |
 
 > `api_key`、`api_secret`、`secret_key` 会在管理器保存时自动加密写入配置文件，格式类似 `enc:dpapi:...`。管理器读取时会自动解密并显示明文，插件运行时也会自动解密使用。加密使用 Windows 当前用户 DPAPI，通常只能由同一台电脑的同一 Windows 用户解密。
@@ -280,7 +281,7 @@ build/
 ├── ets2_chat_translator_app/                       # 绿色版管理器 (绿色免安装)
 │   └── ETS2 Chat Translator Manager.exe
 └── installer/
-    └── ETS2-Chat-Translator-Manager-Setup-0.3.8.exe # 独立安装包 (集成 NSIS)
+    └── ETS2-Chat-Translator-Manager-Setup-0.3.9.exe # 独立安装包 (集成 NSIS)
 ```
 
 ---
@@ -303,6 +304,8 @@ build/
 | `[ChatTranslator]` | 插件初始化、配置热重载、悬浮窗状态、是否跳过翻译 |
 | `[Translate]` | 翻译入队、缓存命中、本地字典、Provider 降级、失败原因 |
 | `[TranslateHTTP]` | HTTP 状态码、接口耗时、响应预览 |
+
+悬浮窗搜索框会同时匹配当前聊天记录和当天 TruckersMP `log_spawning_YYYY.MM.DD_log.txt` 中的玩家信息。可搜索玩家名、日志消息、临时编号、TMPID、SteamID64 或 Tag；同一个临时编号存在多个记录时会按多条结果排列。只读取当天文件，例如 2026 年 6 月 14 日只读取 `log_spawning_2026.06.14_log.txt`。
 
 ### 3. 提交 Issues
 
@@ -332,6 +335,12 @@ build/
 ---
 
 ## 🧾 历史版本更新
+
+### 🚀 v0.3.9
+* **🔍 悬浮窗搜索优化**：搜索框贴近状态栏，修复输入框文字不可见的问题，并显示搜索结果数量。
+* **🧾 当天 spawning 日志搜索**：悬浮窗搜索会读取当天 `log_spawning_YYYY.MM.DD_log.txt`，支持按玩家名、临时编号、TMPID、SteamID64、Tag 查找，多结果会逐条排列。
+* **🪟 全透明背景**：悬浮窗背景透明度下限从 `35` 调整为 `0`，支持真正全透明背景。
+* **💾 保存配置优化**：管理器保存配置时批量加密密钥，减少点击保存时的短暂卡顿。
 
 ### 🚀 v0.3.8
 * **🔎 更新检测流程优化**：点击检查更新后先展开镜像选择，可直连检查、测速后自动选最快镜像，或手动选择镜像检查。

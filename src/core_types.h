@@ -11,6 +11,8 @@ struct ChatEntry
     std::wstring body;
     std::wstring translated;
     bool serviceLine = false;
+    bool infoLine = false;
+    bool searchOnly = false;
 };
 
 struct RuntimeConfig

@@ -212,7 +212,7 @@ function baseConfig() {
     cache_limit: Math.max(100, numberValue(els.cacheLimit, 1500)),
     timeout_ms: Math.max(1500, Math.min(6000, numberValue(els.timeoutMs, 5000))),
     font_size: Math.max(12, Math.min(28, numberValue(els.fontSize, 18))),
-    overlay_opacity: Math.max(35, Math.min(100, numberValue(els.overlayOpacity, 98))),
+    overlay_opacity: Math.max(0, Math.min(100, numberValue(els.overlayOpacity, 98))),
     providers: []
   };
 }
@@ -656,11 +656,16 @@ els.testConfigBtn.addEventListener('click', async () => {
 els.saveConfigBtn.addEventListener('click', async () => {
   try {
     JSON.parse(els.preview.value);
+    els.saveConfigBtn.disabled = true;
+    els.saveConfigBtn.textContent = '保存中...';
     await window.managerApi.writeConfig(currentGame, els.ets2Path.value.trim(), els.preview.value);
     setStatus('翻译配置已保存');
     await refreshState();
   } catch (error) {
     setStatus(`保存失败：${error.message}`);
+  } finally {
+    els.saveConfigBtn.disabled = false;
+    els.saveConfigBtn.textContent = '保存配置';
   }
 });
 
@@ -896,7 +901,8 @@ function setFontSize(size) {
 }
 
 function setOverlayOpacity(value) {
-  const opacity = Math.max(35, Math.min(100, Number.parseInt(value, 10) || 98));
+  const parsed = Number.parseInt(value, 10);
+  const opacity = Math.max(0, Math.min(100, Number.isFinite(parsed) ? parsed : 98));
   els.overlayOpacity.value = opacity;
   els.overlayOpacityValue.textContent = opacity;
   updatePreview();

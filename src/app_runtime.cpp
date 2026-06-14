@@ -120,6 +120,9 @@ void AppRuntime::AcceptChat(const ChatEntry& entry)
     if (!alive_ || !panel_) return;
     CheckConfigReload();
     unsigned int id = panel_->Push(entry);
+    if (entry.infoLine) {
+        return;
+    }
     if (!panel_->IsVisible()) {
         LogValue(L"[ChatTranslator] skip translation while overlay hidden: ", entry.body);
         return;

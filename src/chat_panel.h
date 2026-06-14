@@ -35,6 +35,7 @@ private:
     void LayoutSearchBox(RECT bounds);
     void UpdateSearchText();
     bool EntryMatches(const ChatEntry& entry) const;
+    int MatchCountUnlocked() const;
     void UpdateContentWidth(int clientWidth);
     int EntryHeight(HDC dc, const ChatEntry& entry) const;
     void ScrollToEnd();
@@ -60,6 +61,7 @@ private:
     unsigned int nextId_ = 1;
     std::wstring status_;
     std::wstring searchText_;
+    std::wstring searchDisplayText_;
 
     int topBand_ = 46;
     int statusBand_ = 32;

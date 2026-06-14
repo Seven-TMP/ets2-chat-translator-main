@@ -33,7 +33,7 @@ constexpr int kTimeColumnW = 68;
 
 BYTE BackgroundAlpha(int opacity)
 {
-    int clamped = (std::max)(35, (std::min)(100, opacity));
+    int clamped = (std::max)(0, (std::min)(100, opacity));
     return (BYTE)((clamped * 255 + 50) / 100);
 }
 
@@ -364,7 +364,7 @@ bool ChatPanel::Open(HINSTANCE instance, const RuntimeConfig& runtime, const std
         startRect.left, startRect.top, w, h, nullptr, nullptr, instance_, this);
     if (!hwnd_) return false;
 
-    overlayOpacity_ = (std::max)(35, (std::min)(100, runtime.overlayOpacity));
+    overlayOpacity_ = (std::max)(0, (std::min)(100, runtime.overlayOpacity));
     SetOverlayHotkey(runtime.overlayHotkey);
 
     ShowWindow(hwnd_, SW_SHOW);
@@ -398,7 +398,7 @@ void ChatPanel::ApplyRuntime(const RuntimeConfig& runtime)
     titleFont_ = nextTitleFont;
 
     fontSize_ = nextFontSize;
-    overlayOpacity_ = (std::max)(35, (std::min)(100, runtime.overlayOpacity));
+    overlayOpacity_ = (std::max)(0, (std::min)(100, runtime.overlayOpacity));
     rowH_ = (std::max)(18, fontSize_ + 7);
     subRowH_ = (std::max)(16, fontSize_ + 5);
     topBand_ = (std::max)(44, fontSize_ + 31);
@@ -565,7 +565,7 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         if (self->searchBox_) {
             SendMessageW(self->searchBox_, WM_SETFONT, (WPARAM)self->smallFont_, TRUE);
             SendMessageW(self->searchBox_, EM_SETCUEBANNER, FALSE, (LPARAM)L"搜索");
-            SendMessageW(self->searchBox_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(8, 8));
+            SendMessageW(self->searchBox_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(7, 7));
             RECT rc{};
             GetClientRect(hwnd, &rc);
             self->LayoutSearchBox(rc);
@@ -622,8 +622,8 @@ LRESULT CALLBACK ChatPanel::WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         if ((HWND)lp == self->searchBox_) {
             HDC editDc = (HDC)wp;
             SetTextColor(editDc, cText);
-            SetBkColor(editDc, RGB(13, 18, 27));
-            if (!self->editBrush_) self->editBrush_ = CreateSolidBrush(RGB(13, 18, 27));
+            SetBkColor(editDc, RGB(11, 16, 24));
+            if (!self->editBrush_) self->editBrush_ = CreateSolidBrush(RGB(11, 16, 24));
             return (LRESULT)self->editBrush_;
         }
         break;
@@ -690,7 +690,15 @@ void ChatPanel::DrainPending()
                 }
             }
         }
-        if (entries_.size() > 700) entries_.erase(entries_.begin(), entries_.begin() + 150);
+        if (entries_.size() > 1800) {
+            int removeSearchOnly = 400;
+            entries_.erase(std::remove_if(entries_.begin(), entries_.end(), [&](const ChatEntry& entry) {
+                if (removeSearchOnly <= 0 || !entry.searchOnly) return false;
+                --removeSearchOnly;
+                return true;
+            }), entries_.end());
+        }
+        if (entries_.size() > 900) entries_.erase(entries_.begin(), entries_.begin() + 180);
     }
     RenderLayered();
     if (follow_) PostMessageW(hwnd_, WM_APP + 1, 0, 0);
@@ -753,11 +761,6 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
     RECT title{ 30, 0, (std::max)(128, titleRight), topBand_ };
     DrawTextLine(dc, titleFont_, cText, L"TruckersMP Chat", title, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-    if (searchBox_ && IsWindowVisible(searchBox_)) {
-        RoundFill(dc, searchBoxRect_, 8, RGB(13, 18, 27));
-        StrokeRound(dc, searchBoxRect_, 8, RGB(44, 54, 73));
-    }
-
     RECT tag{ bounds.right - 118, 14, bounds.right - 52, topBand_ - 12 };
     RoundFill(dc, tag, 12, RGB(22, 42, 62));
     DrawTextLine(dc, smallFont_, cCyan, L"LIVE", tag, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -770,12 +773,21 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
     {
         std::lock_guard<std::mutex> guard(lock_);
         status = status_;
+        if (!searchDisplayText_.empty()) {
+            status = L"搜索框 / 日志消息 / 日志信息 / 临时编号：\"" + searchDisplayText_ +
+                L"\" | 结果 " + std::to_wstring(MatchCountUnlocked()) + L" 条";
+        }
     }
     RECT statusBox{ 16, topBand_, bounds.right - 16, topBand_ + statusBand_ - 6 };
     RoundFill(dc, statusBox, 10, RGB(13, 18, 27));
+    if (searchBox_ && IsWindowVisible(searchBox_)) {
+        RoundFill(dc, searchBoxRect_, 7, RGB(11, 16, 24));
+        StrokeRound(dc, searchBoxRect_, 7, RGB(52, 64, 86));
+    }
     RECT dot{ statusBox.left + 12, statusBox.top + 10, statusBox.left + 20, statusBox.top + 18 };
     RoundFill(dc, dot, 8, RGB(16, 185, 129));
-    RECT statusText{ statusBox.left + 28, statusBox.top, statusBox.right - 12, statusBox.bottom };
+    int statusLeft = (searchBox_ && IsWindowVisible(searchBox_)) ? searchBoxRect_.right + 12 : statusBox.left + 28;
+    RECT statusText{ statusLeft, statusBox.top, statusBox.right - 12, statusBox.bottom };
     DrawTextLine(dc, smallFont_, cDim, CompactStatus(status), statusText, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
     RECT area{ 0, topBand_ + statusBand_, bounds.right, bounds.bottom - 8 };
@@ -794,12 +806,17 @@ void ChatPanel::Paint(HDC dc, RECT bounds)
             int h = EntryHeight(dc, e);
             if (y > bounds.bottom) break;
             if (y + h >= area.top) {
-                if (e.serviceLine) {
+                if (e.serviceLine || e.infoLine) {
                     RECT card{ left, y + 1, right, y + h - 3 };
-                    RoundFill(dc, card, 7, RGB(44, 26, 32));
-                    RECT r{ card.left + 10, card.top, card.right - 10, card.bottom };
-                    DrawTextLine(dc, smallFont_, cWarn, L"[" + e.time + L"] " + e.body, r,
-                        DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                    RoundFill(dc, card, 7, e.infoLine ? RGB(20, 34, 47) : RGB(44, 26, 32));
+                    StrokeRound(dc, card, 7, e.infoLine ? RGB(38, 70, 92) : RGB(82, 42, 50));
+                    RECT r{ card.left + 10, card.top + 4, card.right - 10, card.bottom - 4 };
+                    if (e.infoLine) {
+                        DrawWrappedText(dc, smallFont_, RGB(125, 211, 252), L"[" + e.time + L"] " + e.body, r, 2, subRowH_);
+                    } else {
+                        DrawTextLine(dc, smallFont_, cWarn, L"[" + e.time + L"] " + e.body, r,
+                            DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                    }
                 } else {
                     RECT card{ left, y + 1, right, y + h - 3 };
                     RoundFill(dc, card, 7, (visibleIndex % 2 == 0) ? cCard : cCardAlt);
@@ -866,20 +883,21 @@ void ChatPanel::LayoutSearchBox(RECT bounds)
     if (!searchBox_) return;
 
     int clientWidth = (int)bounds.right;
-    int width = (std::min)(170, (std::max)(118, clientWidth / 4));
-    int left = 206;
+    int statusLeft = 16;
+    int width = (std::min)(150, (std::max)(92, clientWidth / 5));
+    int left = statusLeft + 10;
     int right = left + width;
-    int top = 13;
-    int bottom = (std::max)(top + 24, topBand_ - 12);
+    int top = topBand_ + 5;
+    int bottom = topBand_ + statusBand_ - 11;
 
-    if (clientWidth < 520 || right > clientWidth - 128 || bottom <= top + 8) {
+    if (clientWidth < 420 || right > clientWidth - 150 || bottom <= top + 12) {
         ShowWindow(searchBox_, SW_HIDE);
         return;
     }
 
     searchBoxRect_ = { left, top, right, bottom };
-    SetWindowPos(searchBox_, nullptr, left + 7, top + 2,
-        (std::max)(40, width - 14), (std::max)(18, bottom - top - 4),
+    SetWindowPos(searchBox_, nullptr, left + 6, top + 2,
+        (std::max)(40, width - 12), (std::max)(18, bottom - top - 4),
         SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }
 
@@ -892,16 +910,18 @@ void ChatPanel::UpdateSearchText()
         GetWindowTextW(searchBox_, value.data(), length + 1);
     }
     value.resize((std::max)(0, length));
-    value = LowerCopy(text::Trim(value));
+    value = text::Trim(value);
+    std::wstring lowered = LowerCopy(value);
     {
         std::lock_guard<std::mutex> guard(lock_);
-        searchText_ = std::move(value);
+        searchDisplayText_ = value;
+        searchText_ = std::move(lowered);
     }
 }
 
 bool ChatPanel::EntryMatches(const ChatEntry& entry) const
 {
-    if (searchText_.empty()) return true;
+    if (searchText_.empty()) return !entry.searchOnly;
     std::wstring haystack;
     haystack.reserve(entry.time.size() + entry.channel.size() + entry.author.size() +
         entry.body.size() + entry.translated.size() + 8);
@@ -913,9 +933,19 @@ bool ChatPanel::EntryMatches(const ChatEntry& entry) const
     return LowerCopy(std::move(haystack)).find(searchText_) != std::wstring::npos;
 }
 
+int ChatPanel::MatchCountUnlocked() const
+{
+    int count = 0;
+    for (const auto& e : entries_) {
+        if (EntryMatches(e)) ++count;
+    }
+    return count;
+}
+
 int ChatPanel::EntryHeight(HDC dc, const ChatEntry& entry) const
 {
     if (entry.serviceLine) return rowH_ + 8;
+    if (entry.infoLine) return subRowH_ * 2 + 12;
     int textWidth = (std::max)(80, contentWidth_ - kTimeColumnW - 10);
     int h = 13;
     if (!entry.author.empty()) {
